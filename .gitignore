@@ -1,0 +1,9 @@
+
+*.jpg
+P5_DogProyect/bottleneck_features/DogResnet50Data.npz
+P5_DogProyect/.DS_Store
+P5_DogProyect/.ipynb_checkpoints/dog_app-checkpoint.ipynb
+P5_DogProyect/lfw/.DS_Store
+P5_DogProyect/saved_models/weights.best.from_scratch.hdf5
+P5_DogProyect/saved_models/weights.best.Resnet50.hdf5
+P5_DogProyect/saved_models/weights.best.VGG16.hdf5

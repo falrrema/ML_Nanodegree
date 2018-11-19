@@ -30,9 +30,9 @@ class Task():
         """Uses current pose of sim to return reward."""
         #reward = 1.-.3*(abs(self.sim.pose[:3] - self.target_pos)).sum()
         #reward = np.tanh(1 - 0.003*(abs(self.sim.pose[:3] - self.target_pos))).sum()
-        dist = np.linalg.norm(self.sim.pose[:3]-self.target_pos) # euclidean distance between the position and target
+        dist = np.linalg.norm(1-0.5*(self.sim.pose[:3]-self.target_pos)) # euclidean distance between the position and target
         #variance = np.var(rotor_speeds)
-        reward = np.exp(-dist/(dist+100))
+        reward = np.exp(-(dist**2)/(dist+100))
         #+ (np.tanh(-self.sim.v[1]/500)) + (np.tanh(-self.sim.v[2]/500)) + (np.tanh(self.sim.v[3]/500))
         return reward
 

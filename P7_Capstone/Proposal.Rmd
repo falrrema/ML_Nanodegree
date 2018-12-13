@@ -1,0 +1,56 @@
+---
+title: "Machine Learning Capstone Proposal"
+subtitle: "Quora Insincere Questions Classification Project"
+author:
+    - Fabian Reyes
+date: December 2018
+output: pdf_document
+---
+
+## Domain Background
+
+
+The digital transformation has completely changed our way of communicating between ourselves. Today most of our social relationships, work, and reading is done online. Although, online communication has been a great place for personal expression and insightful discussions, it has also been a place for toxic and divisive content. The threat of abuse and online harassment, which derives from this toxic content, has been a growing concern this past few years [1]. People who suffer from this divisive content usually stop expressing themselves and give up on seeking different opinions. On the long run, this can become an existential problem in freedom of speech. 
+
+Many well-known social and news media platforms have tackled this issue with online moderators, however, the immense amount of content that every day is generated makes this task extremely hard and most of the time futile. Hence, many platforms have turn to machine learning to identify, evaluate and support online moderators on this critical task. This has become a reality for big media platforms such as The Economist [2], Wikipedia [3], New York Times [4], and The Guardian [5]. All of them have partnered with Google and Jigsaw to experiment with their new Perspective API that helps them host better online conversations [6]. 
+
+I personally feel engaged with this issue and related ones like fake news. I also find very exciting and challenging the possibility to teach a machine to understand language and its intricacies to help, solve and support human work. This task is part of a subfield called Natural Language Processing (NLP), which is concerned with the interactions between computers and human languages, in particular how to program computers to process and analyze large amounts of natural language data [7]. Recently I have started a project which involves NLP and I taking the chance to learn more about it through this project.
+
+## Problem Statement
+
+Quora is a platform that empowers people to learn from each other, thus it’s been a frequent target for abusive content. Quora wants to keep their platform as a place where users can feel safe sharing their knowledge with the world, therefore it wants to face this problem by hosting a Kaggle competition aimed at identifying insincere questions [8]. Quora wants kagglers to develop scalable methods and models that identify and flag insincere questions. By definition an insincere question is a question which is founded upon false premises, or that intend to make a statement rather than look for helpful answers. 
+
+I will test different supervised learning models (e.g Logistic Regression, Random Forest, Gradient Boosting) supported by a rich feature extraction process (e.g PCA, kmeans, LSA, LDA) and efficient text cleaning process. My aim is to develop a scalable data pipeline and a robust yet interpretable model that helps Quora not only identify insincere question, but to give insights on feature importance and context relevance. 
+
+The main performance measure, as evaluated in the competition, is the F1-score, which is especially suited for this type of task.
+
+## Datasets and Inputs
+
+The dataset considered for this project can be found on the following link:
+
+## Benchmark Model
+
+
+## Evaluation Metrics
+
+
+## Project Design
+
+
+## References
+
+[1] Nobata, Chikashi & Tetreault, Joel & Thomas, Achint & Mehdad, Yashar & Chang, Yi. (2016). Abusive Language Detection in Online User Content. 145-153. 10.1145/2872427.2883062.
+
+[2] https://medium.economist.com/help-us-shape-the-future-of-comments-on-economist-com-fa86eeafb0ce. Help us shape the future of comments on economist.com
+
+[3] https://meta.wikimedia.org/wiki/Research:Detox. Research:Detox.
+
+[4] https://www.nytco.com/press/the-times-is-partnering-with-jigsaw-to-expand-comment-capabilities/. The Times is Partnering with Jigsaw to Expand Comment Capabilities
+
+[5] https://www.theguardian.com/technology/series/the-web-we-want. The web we want. 
+
+[6] https://www.perspectiveapi.com/#/. Perspective API.
+
+[7] https://en.wikipedia.org/wiki/Natural_language_processing. Natural Language Processing.
+
+[8] https://www.kaggle.com/c/quora-insincere-questions-classification. Quora Insincere Questions Classification.

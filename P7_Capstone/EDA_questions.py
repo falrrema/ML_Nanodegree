@@ -6,15 +6,16 @@ This is a temporary script file.
 """
 
 # Loading libraries
-from sklearn import model_selection, preprocessing, linear_model, naive_bayes, metrics, svm
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn import model_selection, metrics, linear_model
+from sklearn.feature_extraction.text import TfidfTransformer, CountVectorizer
+from sklearn.pipeline import Pipeline
+from sklearn.dummy import DummyClassifier
 from wordcloud import WordCloud
 from tqdm import tqdm
-from nltk import collocations as col
 from nltk.corpus import stopwords
+from gensim.models.phrases import Phrases, Phraser
+from collections import Counter 
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import seaborn as sns
 
 %matplotlib inline
@@ -38,7 +39,8 @@ print("Strong class imbalance. "
       "the {}% of the data".format(cnts[1], round(cnts[1]/sum(cnts)*100, 1)))
 
 # 2. Text Cleaning and preprocessing 
-# Applying lowercasing + punctuation removal + stopwords removal and lemmatization
+# Applying lowercasing + punctuation removal + special character removal + 
+# stopwords removal and lemmatization
 stop_words = h.get_clean_stopwords(stopwords.words('english'))
 train_set['qt_clean'] = train_set.question_text.progress_apply(lambda t: h.clean_text(t))
 train_set['qt_clean_stop'] = train_set.question_text.progress_apply(lambda t: h.clean_text(t, stop_words = stop_words))
@@ -65,76 +67,74 @@ wf_sincere.head(10)
 wf_insincere.head(10)
 
 # Getting Concept words by collocations
-bigram_measures = col.BigramAssocMeasures()
-doc_words = np.concatenate(np.array([sentence.split() for sentence in train_set.qt_clean_stop]))
-bigramFinder = col.BigramCollocationFinder.from_words(doc_words)
-bigramFinder.apply_freq_filter(20) # cutoff
+train_tokens = [t.split() for t in train_set.qt_clean_stop]
+bigramer = Phrases(train_tokens)  # train model
 
-# bigrams
-bigram_freq = bigramFinder.ngram_fd.items()
-bigramPMITable = pd.DataFrame(list(bigramFinder.score_ngrams(bigrams.pmi)), columns=['bigram','PMI']).sort_values(by='PMI', ascending=False)
-bigramPMITable.head(10)
-# bigramFinder.nbest(bigram_measures.pmi, 1000)  
+train_set.qt_clean_stop[100]
+[bigramer[t] for t in train_tokens[100:101]]
 
-# Replacing collocations as bigrams in questions
-collocations = set(bigramFreqTable.bigram)
-train_set['qt_clean_stop_col'] = train_set.qt_clean_stop.progress_apply(lambda t: h.apply_collocations(t, collocations))
+bigram_counter = list()
+bigram_list = list(bigramer.vocab.items())
+for key, value in bigram_list:
+    str_key = key.decode()
+    if len(str_key.split("_")) > 1:
+        bigram_counter.append(tuple([str_key, value]))
 
-# WordCloud of collocation + sincere questions
-sincere_questions = train_set[train_set.target == 0].qt_clean
-insincere_questions = train_set[train_set.target == 1].qt_clean
+bigram_df = pd.DataFrame(bigram_counter, columns=['bigrams', 'count'])
+bigram_df.sort_values('count', ascending = False).head(10)
 
-h.plot_wordcloud(sincere_questions, max_words=70, 
-max_font_size=100, stop_words = stop_words, 
-figure_size=(8,10), scale = 2)
+# Replacing collocations in questions to improve interpretability
+bigramer = Phraser(bigramer) # faster implementation
+train_set['qt_col_stop'] = [' '.join(bigramer[tokens]) for tokens in tqdm(train_tokens)]
 
-# WordCloud of collocation + insincere questions
-h.plot_wordcloud(insincere_questions, max_words=70, 
-max_font_size=100, stop_words = stop_words, 
-figure_size=(8,10), scale = 2)
+wf_sincere = h.word_frequency(train_set.qt_col_stop[train_set.target==0])
+wf_insincere = h.word_frequency(train_set.qt_col_stop[train_set.target==1])
 
+wf_sincere[['_' in i for i in wf_sincere.word]].head(10)
+wf_insincere[['_' in i for i in wf_insincere.word]].head(10)
 
+train_set.to_csv('Data/train_preproc.csv', sep='\t')
 
+# 4. Modelling
+train_set = pd.read_csv('Data/train_preproc.csv', encoding = 'latin1', sep = '\t')
 
+# Train Valid split
+train_x, valid_x, train_y, valid_y = model_selection.train_test_split(train_set.qt_col_stop, 
+                                                                      train_set.target,
+                                                                      test_size = 0.3,
+                                                                      stratify = train_set.target,
+                                                                      random_state = 33)
 
+# Defining pipeline and evaluation functions
+def create_simple_pipeline(learner):
+    estimators = []
+    estimators.append(('vect', CountVectorizer()))
+    estimators.append(('tfidf', TfidfTransformer()))
+    estimators.append(('learner', learner))
+    model = Pipeline(estimators)
+    return(model)
+    
+def evaluate_pipeline(pipe, X, y, cv = 5, cpus = 5, verbose = True, seed = 33):  
+    kfold = model_selection.KFold(n_splits=cv, random_state=seed)
+    results = model_selection.cross_val_score(pipe, X, y, scoring = 'f1',
+                                              cv=kfold, n_jobs=cpus, verbose = verbose)
+    return(results)
 
+# Bechmark Models
+# Naive Model
+lrn = DummyClassifier(random_state = 33)
+pipe_lrn = create_simple_pipeline(lrn)
+results_dummy = evaluate_pipeline(pipe_lrn, X = train_x, y = train_y)
+results_dummy.mean()
+h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
+                      title = 'Learning Curves (Dummy Classifer)')
 
+# baseline score: Logistic Regression 
+lrn = linear_model.LogisticRegression()
+pipe_lrn = create_simple_pipeline(lrn)
+results_log = evaluate_pipeline(pipe_lrn, train_x, train_y)
+results_log.mean()
+h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
+                      title = 'Learning Curves (Dummy Classifer)')
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+train_set.columns

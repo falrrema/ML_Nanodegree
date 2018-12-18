@@ -8,16 +8,18 @@ The following notebook will explore the data set provided in the quora kaggle co
 
 # Loading libraries
 from sklearn import model_selection, metrics, linear_model, naive_bayes
-from sklearn.ensemble import RandomForestClassifier, BaggingClassifier
-from sklearn.feature_extraction.text import TfidfTransformer, CountVectorizer
+from sklearn.ensemble import RandomForestClassifier, BaggingClassifier, AdaBoostClassifier, GradientBoostingClassifier
+from sklearn.feature_extraction.text import TfidfTransformer, CountVectorizer, TfidfVectorizer
 from sklearn.pipeline import Pipeline
 from sklearn.dummy import DummyClassifier
+from sklearn.decomposition import TruncatedSVD
 from wordcloud import WordCloud
 from tqdm import tqdm
 from nltk.corpus import stopwords
 from gensim.models.phrases import Phrases, Phraser
 from collections import Counter 
 import pandas as pd
+import numpy as np
 import seaborn as sns
 import xgboost
 import pickle
@@ -105,9 +107,9 @@ train_x, valid_x, train_y, valid_y = model_selection.train_test_split(train_set.
                                                                       random_state = 33)
 
 # Defining pipeline and evaluation functions
-def create_simple_pipeline(learner, ngram = 1):
+def create_simple_pipeline(learner, ngram = 1, term_count = 1):
     estimators = []
-    estimators.append(('vect', CountVectorizer(ngram_range = [1,ngram])))
+    estimators.append(('vect', CountVectorizer(ngram_range = [1,ngram], min_df = term_count)))
     estimators.append(('tfidf', TfidfTransformer()))
     estimators.append(('learner', learner))
     model = Pipeline(estimators)
@@ -150,8 +152,7 @@ h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3,
                       title = 'Learning Curves (NB Classifer)')
 
 # Logistic Bag Model
-lrn = BaggingClassifier(linear_model.LogisticRegression(), n_estimators=10,
-                        max_samples=0.5, max_features=1)
+lrn = BaggingClassifier(n_estimators=50, max_samples=0.5, max_features=0.5)
 pipe_lrn = create_simple_pipeline(lrn)
 results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
 results['logregbag'] = results_mod
@@ -160,10 +161,20 @@ print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean()
 h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
                       title = 'Learning Curves (NB Classifer)')
 
+# AdaBoost Model
+lrn = AdaBoostClassifier(random_state = 33)
+pipe_lrn = create_simple_pipeline(lrn)
+results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
+results['Adaboost'] = results_mod
+print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
+
+h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
+                      title = 'Learning Curves (NB Classifer)')
+
 # Xgboost
-lrn = xgboost.XGBClassifier(max_depth=10, learning_rate=0.05, subsample=0.8,
-                            n_estimators=200, objective='binary:logistic',
-                            colsample_bytree=0.7, eta=0.3, gamma=5,
+lrn = xgboost.XGBClassifier(max_depth=5, learning_rate=0.1, subsample=1,
+                            n_estimators=500, objective='binary:logistic',
+                            colsample_bytree=1, gamma=1,
                             random_state=33)
 pipe_lrn = create_simple_pipeline(lrn)
 results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y, cpus = 3)
@@ -175,28 +186,95 @@ h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3,
 
 # 5. Feature Engineering: Dimensionality Reduction
 # One problem is the vast amount of text features generated in CountVectorizer
-# much of them are pure noise, which 
+# much of them are pure noise
+count_vect = CountVectorizer(binary = True)
+count_vect.fit(train_x)
+xtrain_count = count_vect.transform(train_x)
+xtrain_count.shape
+print('The document-term matrix of xtrain has {} terms'.format(xtrain_count.shape[1]))
 
+# Analyzing sparsity of each column in sparse matrix
+colsums = np.asarray(xtrain_count.sum(axis=0)).flatten()
+colnames = count_vect.get_feature_names()
+sparse_df = pd.DataFrame(np.column_stack((colnames,colsums)), columns = ['word', 'doc_count'])
+sparse_df['doc_count'] = sparse_df['doc_count'].astype(int)
+sparse_df['sparsity'] = (xtrain_count.shape[0] - sparse_df.doc_count)/xtrain_count.shape[0]*100
+sparse_df = sparse_df.sort_values(['doc_count'], ascending = False)
 
+above_99 = sparse_df[sparse_df.sparsity >= 99].shape[0]
+above_95 = sparse_df[sparse_df.sparsity >= 95].shape[0]
+above_90 = sparse_df[sparse_df.sparsity >= 90].shape[0]
+one_term = sparse_df[sparse_df.doc_count ==1].shape[0]
+two_term = sparse_df[sparse_df.doc_count <=2].shape[0]
+five_term = sparse_df[sparse_df.doc_count <=5].shape[0]
+print('A total of {} ({}% total) terms have a sparsity above 0.99'.format(above_99, round(above_99/xtrain_count.shape[1]*100,1)))
+print('A total of {} ({}% total) terms have a sparsity above 0.95'.format(above_95, round(above_95/xtrain_count.shape[1]*100,1)))
+print('A total of {} ({}% total) terms have a sparsity above 0.90'.format(above_90, round(above_90/xtrain_count.shape[1]*100,1)))
+print('A total of {} ({}% total) terms appear in only 1 document'.format(one_term, round(one_term/xtrain_count.shape[1]*100,1)))
+print('A total of {} ({}% total) terms appear at least in 2 document'.format(two_term, round(two_term/xtrain_count.shape[1]*100,1)))
+print('A total of {} ({}% total) terms appear at least in 5 document'.format(five_term, round(five_term/xtrain_count.shape[1]*100,1)))
 
+# Filter noise words (term count < 3) check performance with baseline
+# baseline score: Logistic Regression 
+lrn = linear_model.LogisticRegression()
+pipe_lrn = create_simple_pipeline(lrn, term_count = 3)
+results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y) 
 
+# The elimination of 70% of terms did not hinder baseline performance
+print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
 
+# ¿What if we include bigrams and trigrams? Our dimensionality increases significantly
+count_vect = CountVectorizer(binary = True, ngram_range = [1,3])
+count_vect.fit(train_x)
+xtrain_count = count_vect.transform(train_x)
+xtrain_count.shape
+print('The DTM of bi-trigrams has {}MM terms'.format(round(xtrain_count.shape[1]/1e6,1)))
 
+# Baseline performance with bigram and trigrams ngrams
+lrn = linear_model.LogisticRegression()
+pipe_lrn = create_simple_pipeline(lrn, ngram = 3, term_count = 1)
+results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
 
+# Baseline performance improved by using bigram and trigrams
+print('The meof bi-trigramsan crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
 
+# Following the same criteria as before by filtering noise terms 
+count_vect = CountVectorizer(binary = True, ngram_range = [1,3], min_df = 3)
+count_vect.fit(train_x)
+xtrain_count = count_vect.transform(train_x)
+xtrain_count.shape
+print('The DTM of bi-trigrams has reduce to {} terms'.format(xtrain_count.shape[1]))
 
+lrn = linear_model.LogisticRegression()
+pipe_lrn = create_simple_pipeline(lrn, ngram = 3, term_count = 3)
+results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
 
+# Baseline performance decreases by filtering noise words when using bi-trigrams
+print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
 
+# Truncated SVD on TFIDF
+tfidf_vect = TfidfVectorizer(ngram_range = [1,3])
+tfidf_vect.fit(train_x)
+xtrain_tfidf = tfidf_vect.transform(train_x)
 
+tsvd = TruncatedSVD(n_components=100)
+tsvd.fit(xtrain_tfidf)
 
+def create_pipeline(learner, ngram = 1, term_count = 1, tSVD = True):
+    estimators = []
+    estimators.append(('vect', CountVectorizer(ngram_range = [1,ngram], min_df = term_count)))
+    estimators.append(('tfidf', TfidfTransformer()))
+    
+    if (tSVD):
+        estimators.append(('tsvd', TruncatedSVD(n_components=100)))
+    
+    estimators.append(('learner', learner))
+    model = Pipeline(estimators)
+    return(model)
 
-
-
-
-
-
-
-
+lrn = linear_model.LogisticRegression()
+pipe_lrn = create_pipeline(lrn, ngram = 3, term_count = 3, tSVD = True)
+results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y) 
 
 
 

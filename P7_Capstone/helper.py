@@ -7,6 +7,7 @@ Created on Sun Dec 16 18:21:15 2018
 """
 from nltk.tokenize import word_tokenize
 from nltk.stem.wordnet import WordNetLemmatizer
+from nltk.util import ngrams
 from wordcloud import WordCloud
 from collections import defaultdict
 from tqdm import tqdm
@@ -16,11 +17,15 @@ import pandas as pd
 import numpy as np
 import re
 import matplotlib.pyplot as plt
+import seaborn as sns
+
 
 wnl = WordNetLemmatizer()
 
-def plot_wordcloud(text, mask=None, max_words=400, max_font_size=120, figure_size=(24.0,16.0), 
-                   title = None, title_size=40, image_color=False, stop_words = None, scale = 1):
+def plot_wordcloud(text, mask=None, max_words=400, max_font_size=120, 
+                   figure_size=(24.0,16.0), title = None, title_size=40, 
+                   image_color=False, stop_words = None, scale = 1, 
+                   collocations = True):
     ''' credits to: https://www.kaggle.com/aashita/word-clouds-of-various-shapes
     '''
     wordcloud = WordCloud(background_color='white',
@@ -30,7 +35,7 @@ def plot_wordcloud(text, mask=None, max_words=400, max_font_size=120, figure_siz
                     random_state = 42,
                     mask = mask,
                     scale = scale, 
-                    collocations=True)
+                    collocations=collocations)
     wordcloud.generate(str(text))
     
     plt.figure(figsize=figure_size)
@@ -92,6 +97,21 @@ def word_frequency(text):
             freq_dict[word] += 1
     fd_sorted = pd.DataFrame(sorted(freq_dict.items(), key=lambda x: x[1])[::-1])
     fd_sorted.columns = ["word", "wordcount"]
+    return(fd_sorted)
+
+def ngram_tokens(sentence, ngram = 2):
+    words = sentence.split()
+    return(list(ngrams(words, ngram)))
+
+def ngram_frequency(text, ngram = 2):
+    freq_dict = defaultdict(int)
+    for sentences in tqdm(text):
+        ng_tokens = ngram_tokens(sentences, ngram)
+        for ng in ng_tokens:
+            index = '_'.join(ng)
+            freq_dict[index] += 1
+    fd_sorted = pd.DataFrame(sorted(freq_dict.items(), key=lambda x: x[1])[::-1])
+    fd_sorted.columns = ["ngram", "count"]
     return(fd_sorted)
 
 def apply_collocations(text, set_collocation):
@@ -161,7 +181,8 @@ def plot_learning_curve(estimator, X, y, title, ylim=None, cv=None,
     plt.xlabel("Training examples")
     plt.ylabel("Score")
     train_sizes, train_scores, test_scores = learning_curve(
-        estimator, X, y, cv=cv, n_jobs=n_jobs, train_sizes=train_sizes)
+        estimator, X, y, cv=cv, n_jobs=n_jobs,
+        train_sizes=train_sizes, scoring = 'f1')
     train_scores_mean = np.mean(train_scores, axis=1)
     train_scores_std = np.std(train_scores, axis=1)
     test_scores_mean = np.mean(test_scores, axis=1)
@@ -180,6 +201,60 @@ def plot_learning_curve(estimator, X, y, title, ylim=None, cv=None,
 
     plt.legend(loc="best")
     return plt
+
+def comparison_plot(df_1,df_2,col_1,col_2, space, figsize = (10,8), color = 'salmon'):
+    ''' Credits to https://www.kaggle.com/arunsankar/key-insights-from-quora-insincere-questions
+    '''
+    fig, ax = plt.subplots(1, 2, figsize=figsize)
+    
+    sns.barplot(x=col_2, y=col_1, data=df_1, ax=ax[0], color=color)
+    sns.barplot(x=col_2, y=col_1, data=df_2, ax=ax[1], color=color)
+
+    ax[0].set_xlabel('Word count', size=14, color="black")
+    ax[0].set_ylabel('Words', size=14, color="black")
+    ax[0].set_title('Top words in sincere questions', size=18, color="black")
+
+    ax[1].set_xlabel('Word count', size=14, color="black")
+    ax[1].set_ylabel('Words', size=14, color="black")
+    ax[1].set_title('Top words in insincere questions', size=18, color="black")
+
+    fig.subplots_adjust(wspace=space)
+    plt.show()
+
+# Getting Concept words by collocations
+def get_collocations(text, verbose = True, bigram_freq = True):
+    if (verbose):
+        print('Word Tokenization...')
+    tokens = [t.split() for t in text]
+    
+    if (verbose):
+        print('Making Bigramer Model...')
+        
+    bigramer = Phrases(tokens)  # train model with default settings
+    
+    
+    if (bigram_freq):   
+        if (verbose):
+            print('Making Bigramer list...')
+        
+        bigram_counter = list()
+        bigram_list = list(bigramer.vocab.items())
+        for key, value in bigram_list:
+            str_key = key.decode()
+            if len(str_key.split("_")) > 1:
+                bigram_counter.append(tuple([str_key, value]))
+        bigram_df = pd.DataFrame(bigram_counter, columns=['bigrams', 'count'])
+
+    # Replacing collocations in questions to improve interpretability
+    bigramer = Phraser(bigramer) # faster implementation
+    #train_set['qt_clean_col'] = [' '.join(bigramer[tokens]) for tokens in tqdm(train_tokens)]
+    
+    if (bigram_freq):
+        res_dict = {'bigramer': bigramer, 'bigram_freq': bigram_df}
+    else:
+        res_dict = {'bigramer': bigramer, 'bigram_freq': None}
+    
+    return(res_dict)
 
 #def labels(from_, to_, step_):
 #    return pd.Series(np.arange(from_, to_ + step_, step_)).apply(lambda x: '{:,}'.format(x)).tolist()

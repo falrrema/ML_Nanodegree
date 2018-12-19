@@ -11,13 +11,17 @@ from sklearn import model_selection, metrics, linear_model, naive_bayes
 from sklearn.ensemble import RandomForestClassifier, BaggingClassifier, AdaBoostClassifier, GradientBoostingClassifier
 from sklearn.feature_extraction.text import TfidfTransformer, CountVectorizer, TfidfVectorizer
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer
 from sklearn.dummy import DummyClassifier
 from sklearn.decomposition import TruncatedSVD
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.feature_selection import chi2
 from wordcloud import WordCloud
 from tqdm import tqdm
 from nltk.corpus import stopwords
 from gensim.models.phrases import Phrases, Phraser
 from collections import Counter 
+from scipy import sparse
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -29,7 +33,7 @@ import pickle
 # Loading helper functions
 import helper as h
 
-# 1. Basic Statistics
+# 1. Basic Statistics ---------------------------------------------------------
 # Loading Data
 tqdm.pandas()
 train_set = pd.read_csv('Data/train.csv', encoding = 'latin1')
@@ -43,7 +47,7 @@ print("Strong class imbalance. "
       "There are {} of insincere question that represent"
       "the {}% of the data".format(cnts[1], round(cnts[1]/sum(cnts)*100, 1)))
 
-# 2. Text Cleaning and preprocessing 
+# 2. Text Cleaning and preprocessing  -----------------------------------------
 # Applying lowercasing + punctuation removal + special character removal + 
 # stopwords removal and lemmatization
 print('Applying clean text processing step: '
@@ -53,7 +57,7 @@ stop_words = h.get_clean_stopwords(stopwords.words('english'))
 train_set['qt_clean'] = train_set.question_text.progress_apply(lambda t: h.clean_text(t))
 train_set['qt_clean_stop'] = train_set.question_text.progress_apply(lambda t: h.clean_text(t, stop_words = stop_words))
 
-# 3. Word Statistics
+# 3. Word Statistics ----------------------------------------------------------
 # WordCloud of unigram sincere questions
 sincere_questions = train_set[train_set.target == 0].qt_clean
 insincere_questions = train_set[train_set.target == 1].qt_clean
@@ -95,7 +99,7 @@ h.comparison_plot(wf_sincere[:20],wf_insincere[:20],'ngram','count', .7)
 with open('Data/train_preproc.pkl', 'wb') as output:
     pickle.dump(train_set, output, pickle.HIGHEST_PROTOCOL)
     
-# 4. Benchmark models 
+# 4. Benchmark models ---------------------------------------------------------
 with open('Data/train_preproc.pkl', 'rb') as input:
     train_set = pickle.load(input)
     
@@ -107,9 +111,11 @@ train_x, valid_x, train_y, valid_y = model_selection.train_test_split(train_set.
                                                                       random_state = 33)
 
 # Defining pipeline and evaluation functions
-def create_simple_pipeline(learner, ngram = 1, term_count = 1):
+def create_simple_pipeline(learner, analyzer = 'word', ngram = 1, term_count = 1):
     estimators = []
-    estimators.append(('vect', CountVectorizer(ngram_range = [1,ngram], min_df = term_count)))
+    estimators.append(('vect', CountVectorizer(ngram_range = [1,ngram], 
+                                               min_df = term_count,
+                                               analyzer = 'word')))
     estimators.append(('tfidf', TfidfTransformer()))
     estimators.append(('learner', learner))
     model = Pipeline(estimators)
@@ -121,7 +127,7 @@ def evaluate_pipeline(pipe, X, y, cv = 5, cpus = 5, verbose = True, seed = 33):
                                               cv=kfold, n_jobs=cpus, verbose = verbose)
     return(results)
 
-# Bechmark Models
+# Bechmark Models 
 results = {}
 
 # Naive Model
@@ -184,7 +190,7 @@ print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean()
 h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
                       title = 'Learning Curves (XG Classifer)')
 
-# 5. Feature Engineering: Dimensionality Reduction
+# 5.1 Feature Engineering: Dimensionality Reduction ---------------------------
 # One problem is the vast amount of text features generated in CountVectorizer
 # much of them are pure noise
 count_vect = CountVectorizer(binary = True)
@@ -215,12 +221,12 @@ print('A total of {} ({}% total) terms appear at least in 2 document'.format(two
 print('A total of {} ({}% total) terms appear at least in 5 document'.format(five_term, round(five_term/xtrain_count.shape[1]*100,1)))
 
 # Filter noise words (term count < 3) check performance with baseline
-# baseline score: Logistic Regression 
-lrn = linear_model.LogisticRegression()
+# Logistic Regression without noise terms
+lrn = linear_model.LogisticRegression() # Logistic regressio model
 pipe_lrn = create_simple_pipeline(lrn, term_count = 3)
 results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y) 
 
-# The elimination of 70% of terms did not hinder baseline performance
+# The elimination of 70% of terms showed same performance to baseline
 print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
 
 # ¿What if we include bigrams and trigrams? Our dimensionality increases significantly
@@ -230,13 +236,12 @@ xtrain_count = count_vect.transform(train_x)
 xtrain_count.shape
 print('The DTM of bi-trigrams has {}MM terms'.format(round(xtrain_count.shape[1]/1e6,1)))
 
-# Baseline performance with bigram and trigrams ngrams
-lrn = linear_model.LogisticRegression()
+# Logistic Regression with bigram and trigrams ngrams
 pipe_lrn = create_simple_pipeline(lrn, ngram = 3, term_count = 1)
 results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
 
-# Baseline performance improved by using bigram and trigrams
-print('The meof bi-trigramsan crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
+# Performance improved by using bigram and trigrams
+print('The mean bi-trigrams crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
 
 # Following the same criteria as before by filtering noise terms 
 count_vect = CountVectorizer(binary = True, ngram_range = [1,3], min_df = 3)
@@ -245,36 +250,77 @@ xtrain_count = count_vect.transform(train_x)
 xtrain_count.shape
 print('The DTM of bi-trigrams has reduce to {} terms'.format(xtrain_count.shape[1]))
 
-lrn = linear_model.LogisticRegression()
 pipe_lrn = create_simple_pipeline(lrn, ngram = 3, term_count = 3)
 results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
 
-# Baseline performance decreases by filtering noise words when using bi-trigrams
+# Logistic Regression performance decreases by filtering noise words when using bi-trigrams
 print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
 
-# Truncated SVD on TFIDF
-tfidf_vect = TfidfVectorizer(ngram_range = [1,3])
-tfidf_vect.fit(train_x)
-xtrain_tfidf = tfidf_vect.transform(train_x)
-
-tsvd = TruncatedSVD(n_components=100)
-tsvd.fit(xtrain_tfidf)
-
-def create_pipeline(learner, ngram = 1, term_count = 1, tSVD = True):
+# Truncated SVD on TFIDF ------------------------------------------------------
+# Making a better feature extraction pipeline
+def create_feature_pipeline(analyzer = 'word', ngram = 1, term_count = 1, tsvd_comp = None):
     estimators = []
-    estimators.append(('vect', CountVectorizer(ngram_range = [1,ngram], min_df = term_count)))
+    estimators.append(('vect', CountVectorizer(ngram_range = [1,ngram], 
+                                               min_df = term_count,
+                                               analyzer = 'word')))
     estimators.append(('tfidf', TfidfTransformer()))
     
-    if (tSVD):
-        estimators.append(('tsvd', TruncatedSVD(n_components=100)))
-    
-    estimators.append(('learner', learner))
-    model = Pipeline(estimators)
-    return(model)
+    if (tsvd_comp is not None):
+        estimators.append(('tsvd', TruncatedSVD(n_components=tsvd_comp)))
+        estimators.append(('tosparse', FunctionTransformer(sparse.csr_matrix, 
+                                                           accept_sparse = True, 
+                                                           validate = False)))
 
-lrn = linear_model.LogisticRegression()
-pipe_lrn = create_pipeline(lrn, ngram = 3, term_count = 3, tSVD = True)
-results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y) 
+    
+    pipe = Pipeline(estimators)
+    return(pipe)
+
+feat_pipe =  create_feature_pipeline(ngram = 3, term_count = 3, tsvd_comp = None)
+feat_pipe_svd =  create_feature_pipeline(ngram = 3, term_count = 3, tsvd_comp = 500)
+
+# Fit_transform to compare
+train_tfidf = feat_pipe.fit_transform(train_x)
+train_svd = feat_pipe_svd.fit_transform(train_x)
+
+# Logistic Regression performance with tSVD = 500
+results_mod = evaluate_pipeline(lrn, train_tfidf, train_y)
+print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
+
+results_mod = evaluate_pipeline(lrn, train_svd, train_y, cv = 3, cpus = 3)
+print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
+
+# Logistic Regression performance with tSVD = 1000
+feat_pipe_svd =  create_feature_pipeline(ngram = 3, term_count = 3, tsvd_comp = 1000)
+train_svd = feat_pipe_svd.fit_transform(train_x)
+results_mod = evaluate_pipeline(lrn, train_svd, train_y, cv = 3, cpus = 3)
+print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
+
+pickle_dump(train_svd, 'Data/tSVD_1000N.pkl')
+train_svd = h.pickle_load('Data/tSVD_1000N.pkl')
+
+# 5.2 Feature Engineering: Feature Selection ----------------------------------
+# Another posibility is to performe feature selection on the text vectors
+# Chi-Squared for Feature Selection
+tfidf = TfidfVectorizer(ngram_range = [1,3], analyzer='word')  
+train_tfidf = tfidf.fit_transform(train_x) 
+chi2score = chi2(train_tfidf, train_y)
+scores_df = pd.DataFrame({'words':tfidf.get_feature_names(), 
+                       'chi_squared':chi2score[0],
+                       'prob':chi2score[1]})
+
+# Get features that have a prob << 0.001
+best_chi = scores_df[scores_df.prob <= 0.001].sort_values(['chi_squared'], ascending = False)
+
+# Construct new vocabulary with these words and run logistic reg
+tfidf = TfidfVectorizer(ngram_range = [1,3], vocabulary = best_chi.words)  
+train_tfidf = tfidf.fit_transform(train_x) 
+
+# Logistic Regression with feature selection
+results_mod = evaluate_pipeline(lrn, train_tfidf, train_y)
+print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
+
+
+
 
 
 

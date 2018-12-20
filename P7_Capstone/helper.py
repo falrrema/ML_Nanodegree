@@ -12,6 +12,9 @@ from wordcloud import WordCloud
 from collections import defaultdict
 from tqdm import tqdm
 from sklearn.model_selection import learning_curve
+from gensim import corpora
+from gensim.models import LsiModel, TfidfModel, phrases 
+from gensim.models.coherencemodel import CoherenceModel
 import string as st
 import pandas as pd
 import numpy as np
@@ -231,7 +234,7 @@ def get_collocations(text, verbose = True, bigram_freq = True):
     if (verbose):
         print('Making Bigramer Model...')
         
-    bigramer = Phrases(tokens)  # train model with default settings
+    bigramer = phrases.Phrases(tokens)  # train model with default settings
     
     
     if (bigram_freq):   
@@ -246,9 +249,6 @@ def get_collocations(text, verbose = True, bigram_freq = True):
                 bigram_counter.append(tuple([str_key, value]))
         bigram_df = pd.DataFrame(bigram_counter, columns=['bigrams', 'count'])
 
-    # Replacing collocations in questions to improve interpretability
-    bigramer = Phraser(bigramer) # faster implementation
-    #train_set['qt_clean_col'] = [' '.join(bigramer[tokens]) for tokens in tqdm(train_tokens)]
     
     if (bigram_freq):
         res_dict = {'bigramer': bigramer, 'bigram_freq': bigram_df}
@@ -298,4 +298,74 @@ def pickle_dump(obj, file_path):
 def pickle_load(file_path):
     with open(file_path, "rb") as f:
         return pickle.load(MacOSFile(f))
+
+def prepare_corpus(doc_clean):
+    """
+    Input  : clean document
+    Purpose: create term dictionary of our courpus and Converting list of documents (corpus) into Document Term Matrix
+    Output : term dictionary and Document Term Matrix
+    """
+    # Creating the term dictionary of our courpus, where every unique term is assigned an index. dictionary = corpora.Dictionary(doc_clean)
+    dictionary = corpora.Dictionary(doc_clean)
+    # Converting list of documents (corpus) into Document Term Matrix using dictionary prepared above.
+    doc_term_matrix = [dictionary.doc2bow(doc) for doc in doc_clean]
+    # Applying TFIDF to corpus
+    tfidf = TfidfModel(doc_term_matrix)
+    corpus_tfidf = tfidf[doc_term_matrix]
+    return dictionary,corpus_tfidf
+
+def create_gensim_lsa_model(doc_clean,number_of_topics,words):
+    """
+    Input  : clean document, number of topics and number of words associated with each topic
+    Purpose: create LSA model using gensim
+    Output : return LSA model
+    """
+    print('Preparing Corpus with TFIDF...')
+    dictionary,doc_term_matrix = prepare_corpus(doc_clean)
+
+    # generate LSA model
+    lsamodel = LsiModel(doc_term_matrix, num_topics=number_of_topics, id2word = dictionary)  # train model
+    print(lsamodel.print_topics(num_topics=number_of_topics, num_words=words))
+    return lsamodel
+
+def compute_coherence_values(doc_clean, stop, start=2, step=3):
+    """
+    Input   : dictionary : Gensim dictionary
+              corpus : Gensim corpus
+              texts : List of input texts
+              stop : Max num of topics
+    purpose : Compute c_v coherence for various number of topics
+    Output  : model_list : List of LSA topic models
+              coherence_values : Coherence values corresponding to the LDA model with respective number of topics
+    """
+    
+    print('Preparing Corpus with TFIDF...')
+    dictionary,doc_term_matrix = prepare_corpus(doc_clean)
+    
+    coherence_values = []
+    model_list = []
+    for num_topics in tqdm(range(start, stop, step)):
+        # generate LSA model
+        model = LsiModel(doc_term_matrix, num_topics=num_topics, id2word = dictionary)  # train model
+        model_list.append(model)
+        coherencemodel = CoherenceModel(model=model, texts=doc_clean, dictionary=dictionary, coherence='c_v')
+        coherence_values.append(coherencemodel.get_coherence())
+    return model_list, coherence_values
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

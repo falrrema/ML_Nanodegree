@@ -157,15 +157,16 @@ print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean()
 h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
                       title = 'Learning Curves (NB Classifer)')
 
-# Logistic Bag Model
-lrn = RandomForestClassifier(n_estimators = 500, max_depth = 10, class_weight = 'balanced')
+# Extratrees 
+lrn = ExtraTreesClassifier(n_estimators = 500, max_depth = 10,
+                           class_weight = 'balanced', warm_start=True)
 pipe_lrn = create_simple_pipeline(lrn)
 results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
-results['rf'] = results_mod
+results['extraTrees'] = results_mod
 print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
 
 h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
-                      title = 'Learning Curves (NB Classifer)')
+                      title = 'Learning Curves (ExtraTrees Classifer)')
 
 # AdaBoost Model
 lrn = AdaBoostClassifier(random_state = 33)
@@ -175,20 +176,20 @@ results['Adaboost'] = results_mod
 print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
 
 h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
-                      title = 'Learning Curves (NB Classifer)')
+                      title = 'Learning Curves (Ada Classifer)')
 
-## Xgboost
-#lrn = xgboost.XGBClassifier(max_depth=5, learning_rate=0.1, subsample=1,
-#                            n_estimators=500, objective='binary:logistic',
-#                            colsample_bytree=1, gamma=1,
-#                            random_state=33)
-#pipe_lrn = create_simple_pipeline(lrn)
-#results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y, cpus = 3)
-#results['xgboost'] = results_mod
-#print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
-#
-#h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
-#                      title = 'Learning Curves (XG Classifer)')
+# Xgboost
+lrn = xgboost.XGBClassifier(max_depth=5, learning_rate=0.1, subsample=1,
+                            n_estimators=500, objective='binary:logistic',
+                            colsample_bytree=1, gamma=1,
+                            random_state=33)
+pipe_lrn = create_simple_pipeline(lrn)
+results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y, cpus = 1)
+results['xgboost'] = results_mod
+print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
+
+h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
+                      title = 'Learning Curves (XG Classifer)')
 
 # 5.1 Feature Engineering: Dimensionality Reduction ---------------------------
 # One problem is the vast amount of text features generated in CountVectorizer

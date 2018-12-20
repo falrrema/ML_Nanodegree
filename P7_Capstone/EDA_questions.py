@@ -104,7 +104,7 @@ with open('Data/train_preproc.pkl', 'rb') as input:
     train_set = pickle.load(input)
     
 # Train Valid split
-train_x, valid_x, train_y, valid_y = model_selection.train_test_split(train_set.qt_clean, 
+train_x, valid_x, train_y, valid_y = model_selection.train_test_split(train_set.qt_clean_stop, 
                                                                       train_set.target,
                                                                       test_size = 0.3,
                                                                       stratify = train_set.target,
@@ -138,8 +138,8 @@ results['naive'] = results_mod
 print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
 
 # baseline score: Logistic Regression 
-lrn = linear_model.LogisticRegression()
-pipe_lrn = create_simple_pipeline(lrn)
+lrn_basic = linear_model.LogisticRegression(class_weight = 'balanced')
+pipe_lrn = create_simple_pipeline(lrn_basic)
 results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
 results['logreg_basic'] = results_mod
 print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
@@ -158,10 +158,10 @@ h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3,
                       title = 'Learning Curves (NB Classifer)')
 
 # Logistic Bag Model
-lrn = BaggingClassifier(n_estimators=50, max_samples=0.5, max_features=0.5)
+lrn = RandomForestClassifier(n_estimators = 500, max_depth = 10, class_weight = 'balanced')
 pipe_lrn = create_simple_pipeline(lrn)
 results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
-results['logregbag'] = results_mod
+results['rf'] = results_mod
 print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
 
 h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
@@ -177,18 +177,18 @@ print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean()
 h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
                       title = 'Learning Curves (NB Classifer)')
 
-# Xgboost
-lrn = xgboost.XGBClassifier(max_depth=5, learning_rate=0.1, subsample=1,
-                            n_estimators=500, objective='binary:logistic',
-                            colsample_bytree=1, gamma=1,
-                            random_state=33)
-pipe_lrn = create_simple_pipeline(lrn)
-results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y, cpus = 3)
-results['xgboost'] = results_mod
-print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
-
-h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
-                      title = 'Learning Curves (XG Classifer)')
+## Xgboost
+#lrn = xgboost.XGBClassifier(max_depth=5, learning_rate=0.1, subsample=1,
+#                            n_estimators=500, objective='binary:logistic',
+#                            colsample_bytree=1, gamma=1,
+#                            random_state=33)
+#pipe_lrn = create_simple_pipeline(lrn)
+#results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y, cpus = 3)
+#results['xgboost'] = results_mod
+#print('The mean crossvalidated F1-Score was {}.'.format(round(results_mod.mean(), 2)))
+#
+#h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
+#                      title = 'Learning Curves (XG Classifer)')
 
 # 5.1 Feature Engineering: Dimensionality Reduction ---------------------------
 # One problem is the vast amount of text features generated in CountVectorizer

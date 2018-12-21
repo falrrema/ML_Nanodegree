@@ -217,19 +217,23 @@ train_x, valid_x, train_y, valid_y = model_selection.train_test_split(pretrain_x
 text = train_x.qt_clean_stop
 
 # Defining pipeline and evaluation functions
-def create_simple_pipeline(learner, analyzer = 'word', ngram = [1,1], term_count = 1):
+def create_pipeline(learner = None, ngram = [1,1], 
+                    term_count = 1, vocabulary = None):
     estimators = []
     estimators.append(('vect', CountVectorizer(ngram_range = [1,1], 
                                                min_df = term_count,
-                                               analyzer = 'word')))
+                                               vocabulary = vocabulary)))
     estimators.append(('tfidf', TfidfTransformer()))
-    estimators.append(('learner', learner))
-    model = Pipeline(estimators)
-    return(model)
+    
+    if (learner is not None):    
+        estimators.append(('learner', learner))
+        
+    pipe = Pipeline(estimators)
+    return(pipe)
 
-def evaluate_pipeline(pipe, X, y, cv = 5, cpus = 5, verbose = True, seed = 33):  
+def cv_evaluation(lrn, X, y, cv = 5, cpus = 5, verbose = True, seed = 33):  
     kfold = model_selection.KFold(n_splits=cv, random_state=seed)
-    results = model_selection.cross_validate(pipe, X, y, scoring = 'f1',
+    results = model_selection.cross_validate(lrn, X, y, scoring = 'f1',
                                               cv=kfold, n_jobs=cpus, 
                                               verbose = verbose, 
                                               return_train_score=True)
@@ -241,12 +245,21 @@ results = {}
 
 # Naive Model
 lrn = DummyClassifier(random_state = 33)
-pipe_lrn = create_simple_pipeline(lrn)
-results_mod = evaluate_pipeline(pipe_lrn, X = text, y = train_y)
+pipe_lrn = create_pipeline(lrn)
+results_mod = cv_evaluation(pipe_lrn, X = text, y = train_y)
 results['naive'] = results_mod
 print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
 
-2
+# baseline score: Logistic Regression 
+lrn_basic = linear_model.LogisticRegression(class_weight = 'balanced', 
+                                            C = 1e10, # Large C for no regularization
+                                            random_state = 33, 
+                                           penalty = 'l1')
+pipe_lrn = create_pipeline(lrn_basic)
+results_mod = cv_evaluation(pipe_lrn, text, train_y)
+results['logreg_basic'] = results_mod
+print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
+
 h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3, 
                       title = 'Learning Curves (Logistic Classifer)')    
     
@@ -282,8 +295,8 @@ print('A total of {} ({}% total) terms appear at least in 5 document'.format(fiv
 
 # Filter noise words (term count < 3) check performance with baseline
 # Logistic Regression without noise terms
-pipe_lrn = create_simple_pipeline(lrn_basic, term_count = 3)
-results_mod = evaluate_pipeline(pipe_lrn, text, train_y) 
+pipe_lrn = create_pipeline(lrn_basic, term_count = 3)
+results_mod = cv_evaluation(pipe_lrn, text, train_y) 
 
 # The elimination of ~70% of terms showed same performance to baseline CV
 # And reduced train to test CV scores thus reducing overfit
@@ -301,8 +314,8 @@ print('The DTM of bi-trigrams has {}MM terms'.format(round(xtrain_count.shape[1]
 
 # Logistic Regression with bigram and trigrams ngrams
 # Shows same performance to base test CV, but better in train CV
-pipe_lrn = create_simple_pipeline(lrn_basic, ngram =[1,3], term_count = 1)
-results_mod = evaluate_pipeline(pipe_lrn, text, train_y)
+pipe_lrn = create_pipeline(lrn_basic, ngram =[1,3], term_count = 1)
+results_mod = cv_evaluation(pipe_lrn, text, train_y)
 
 # Performance improved by using bigram and trigrams
 print('The mean train {} and test CV {} of ngrams.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
@@ -314,8 +327,8 @@ xtrain_count = count_vect.transform(text)
 xtrain_count.shape
 print('The DTM of bi-trigrams has reduce to {} terms'.format(xtrain_count.shape[1]))
 
-pipe_lrn = create_simple_pipeline(lrn_basic, ngram = [1,3], term_count = 3)
-results_mod = evaluate_pipeline(pipe_lrn, text, train_y)
+pipe_lrn = create_pipeline(lrn_basic, ngram = [1,3], term_count = 3)
+results_mod = cv_evaluation(pipe_lrn, text, train_y)
 
 # Logistic Regression performance decreases by filtering noise words when using bi-trigrams
 # but is the same comparing to baseline. Noise reduction reduces overfitting. 
@@ -408,10 +421,23 @@ train_tfidf = tfidf.fit_transform(text)
 
 # Logistic Regression with feature selection
 # Feature selection allows to reduce barely afecting baseline performance
-results_mod = evaluate_pipeline(lrn_basic, train_tfidf, train_y)
+results_mod = cv_evaluation(lrn_basic, train_tfidf, train_y)
 print('The mean train {} and test CV {} of ngrams.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
 
+# Saving text feature selection
+with open('Data/text_feature_selection.pkl', 'wb') as output:
+    pickle.dump(best_chi, output, pickle.HIGHEST_PROTOCOL)
+
 # 6. Modelling ----------------------------------------------------------------
+# We will model text features selected by chi_squared
+with open('Data/text_feature_selection.pkl', 'rb') as input:
+    best_chi = pickle.load(input)
+
+pipe_vect = create_pipeline(ngram = [1,3], vocabulary = best_chi.words)
+tfidf_vect = pipe_vect.fit_transform(text)
+
+
+
 models = {'logreg_basic': linear_model.LogisticRegression(class_weight = 'balanced', random_state = 33),
           'naive_bayes': naive_bayes.ComplementNB(),
           'extratrees': ExtraTreesClassifier(random_state = 33, class_weight = 'balanced', warm_start=True),
@@ -431,8 +457,8 @@ def testing_models(train_x, train_y, valid_x, valid_y, models, cv = 5, seed = 33
     
     
 lrn = linear_model.ElasticNet(random_state = 33)
-pipe_lrn = create_simple_pipeline(lrn)
-results_mod = evaluate_pipeline(pipe_lrn, text, train_y)
+pipe_lrn = create_pipeline(lrn)
+results_mod = cv_evaluation(pipe_lrn, text, train_y)
 print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
 
 h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3, 

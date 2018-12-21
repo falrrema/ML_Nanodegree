@@ -246,13 +246,7 @@ results_mod = evaluate_pipeline(pipe_lrn, X = text, y = train_y)
 results['naive'] = results_mod
 print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
 
-# baseline score: Logistic Regression 
-lrn_basic = linear_model.LogisticRegression(class_weight = 'balanced', random_state = 33)
-pipe_lrn = create_simple_pipeline(lrn_basic)
-results_mod = evaluate_pipeline(pipe_lrn, text, train_y)
-results['logreg_basic'] = results_mod
-print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
-
+2
 h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3, 
                       title = 'Learning Curves (Logistic Classifer)')    
     

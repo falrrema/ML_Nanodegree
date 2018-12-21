@@ -4,24 +4,31 @@ Exploratory Data Analysis
 Project: Quora Insincere Questions Classification Project
 
 The following notebook will explore the data set provided in the quora kaggle competition. 
+
+References:
+https://www.analyticsvidhya.com/blog/2018/04/a-comprehensive-guide-to-understand-and-implement-text-classification-in-python/
+https://www.analyticsvidhya.com/blog/2018/02/the-different-methods-deal-text-data-predictive-python/
+https://www.datacamp.com/community/tutorials/discovering-hidden-topics-python
+https://medium.com/@kangeugine/pipeline-80a54121032
+https://www.analyticsvidhya.com/blog/2018/02/natural-language-processing-for-beginners-using-textblob/
+http://danshiebler.com/2016-09-14-parallel-progress-bar/
 """
 
 # Loading libraries
 from sklearn import model_selection, metrics, linear_model, naive_bayes
 from sklearn.ensemble import ExtraTreesClassifier, AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
 from sklearn.feature_extraction.text import TfidfTransformer, CountVectorizer, TfidfVectorizer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.dummy import DummyClassifier
-from sklearn.decomposition import TruncatedSVD
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.feature_selection import chi2
-from wordcloud import WordCloud
+from sklearn.feature_selection import chi2, mutual_info_classif
 from tqdm import tqdm
 from nltk.corpus import stopwords
 from gensim.models.phrases import Phrases, Phraser
-from collections import Counter 
-from scipy import sparse
+from textblob import TextBlob, Blobber
+from textblob.sentiments import NaiveBayesAnalyzer
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -116,10 +123,9 @@ train_set[(train_set.word_count == 1) & (train_set.target == 1)][['question_text
 # And documents with more that 14 words (95% percentile)
 np.percentile(train_set.word_count, [0, 25, 50, 75, 99])
 sns.distplot(train_set.char_count, kde=False, axlabel = 'Character Count')
-sns.distplot(, kde=False, axlabel = 'Word Count')
+sns.distplot(train_set.word_count, kde=False, axlabel = 'Word Count')
 
 # Target comparison
-percentile = np.percentile()
 train_set[['char_count', 'target']].groupby('target').aggregate([min, np.mean, np.median, max])
 train_set[['word_count', 'target']].groupby('target').aggregate([min, np.mean, np.median, max])
 train_set[['word_density', 'target']].groupby('target').aggregate([min, np.mean, np.median, max])
@@ -139,16 +145,57 @@ ax.set_title('Word Density by Target boxplot')
 # Filtering Outlier Documents 
 train_set = train_set[(train_set.word_count > 2) & (train_set.word_count < 15)]
 
-# Saving Preprocessing
+# Saving Preprocessing 
 with open('Data/train_preproc.pkl', 'wb') as output:
     pickle.dump(train_set, output, pickle.HIGHEST_PROTOCOL)
+
+# 4 Document Meta features ----------------------------------------------------
+# These festures may aid text feature modelling
+
+# Basic features
+train_set['char_count'] = train_set.qt_clean_stop.progress_apply(len) # char clean count
+train_set['word_count'] = train_set.qt_clean_stop.progress_apply(lambda x: len(x.split())) # word clean count
+train_set['word_density'] = train_set.char_count / (train_set.word_count+1) # word density count
+train_set['n_stopwords'] = train_set.qt_clean.progress_apply(lambda x: len([x for x in x.split() if x in stop_words]))
+train_set['n_numbers'] = train_set.qt_clean_stop.progress_apply(lambda x: len([x for x in x.split() if x.isdigit()]))
+train_set['n_upper'] = train_set.qt_clean.progress_apply(lambda x: len([x for x in x.split() if x.isupper()]))
+
+# Sentiment features
+train_set['polarity'] = train_set.qt_clean.progress_apply(lambda x: TextBlob(x).sentiment[0])
+train_set['subjectivity'] = train_set.qt_clean.progress_apply(lambda x: TextBlob(x).sentiment[1])
+
+sentimenter = Blobber(analyzer=NaiveBayesAnalyzer())
+train_set['positivity'] = train_set.qt_clean.progress_apply(lambda x: h.NB_sentimenter(x, sentimenter))
+
+# Linguistic Features
+train_set['noun_count'] = h.parallel_process(train_set.qt_clean, h.check_nouns)
+train_set['verb_count'] = h.parallel_process(train_set.qt_clean, h.check_verbs)
+train_set['adj_count'] = h.parallel_process(train_set.qt_clean, h.check_adj)
+train_set['adv_count'] = h.parallel_process(train_set.qt_clean, h.check_adv)
+train_set['pron_count'] = h.parallel_process(train_set.qt_clean, h.check_pron)
+
+col = ['char_count', 'word_count', 'word_density', 'n_stopwords', 
+       'n_numbers', 'n_upper', 'polarity', 'subjectivity', 'positivity',
+       'noun_count', 'verb_count', 'adj_count', 'adv_count', 'pron_count']
+
+# ¿Are they informative of the target? (information gain analysis)
+ig_score = mutual_info_classif(train_set[col], train_set.target)
+ig_score_df = pd.DataFrame({'metafeatures':col, 
+                       'inf_gain':ig_score})
+ig_score_df.sort_values('inf_gain', ascending = False)
+
+# Saving Preprocessing and meta-feature creation
+with open('Data/train_meta_features.pkl', 'wb') as output:
+    pickle.dump(train_set, output, pickle.HIGHEST_PROTOCOL)
     
-# 4. Benchmark models ---------------------------------------------------------
-with open('Data/train_preproc.pkl', 'rb') as input:
+# 5. Benchmark models ---------------------------------------------------------
+with open('Data/train_meta_features.pkl', 'rb') as input:
     train_set = pickle.load(input)
     
 # Train Valid split
-pretrain_x, test_x, pretrain_y, test_y = model_selection.train_test_split(train_set.qt_clean_stop, 
+# For further analysis and to avoid test leakage I will create a  
+# train, test and valid set
+pretrain_x, test_x, pretrain_y, test_y = model_selection.train_test_split(train_set, 
                                                                       train_set.target,
                                                                       test_size = 0.3,
                                                                       stratify = train_set.target,
@@ -159,6 +206,9 @@ train_x, valid_x, train_y, valid_y = model_selection.train_test_split(pretrain_x
                                                                       test_size = 0.2,
                                                                       stratify = pretrain_y,
                                                                       random_state = 33)
+
+text = train_x.qt_clean_stop
+
 
 # Defining pipeline and evaluation functions
 def create_simple_pipeline(learner, analyzer = 'word', ngram = [1,1], term_count = 1):
@@ -174,7 +224,9 @@ def create_simple_pipeline(learner, analyzer = 'word', ngram = [1,1], term_count
 def evaluate_pipeline(pipe, X, y, cv = 5, cpus = 5, verbose = True, seed = 33):  
     kfold = model_selection.KFold(n_splits=cv, random_state=seed)
     results = model_selection.cross_validate(pipe, X, y, scoring = 'f1',
-                                              cv=kfold, n_jobs=cpus, verbose = verbose)
+                                              cv=kfold, n_jobs=cpus, 
+                                              verbose = verbose, 
+                                              return_train_score=True)
     results = pd.DataFrame(results).mean(axis=0)
     return(results)
 
@@ -184,70 +236,27 @@ results = {}
 # Naive Model
 lrn = DummyClassifier(random_state = 33)
 pipe_lrn = create_simple_pipeline(lrn)
-results_mod = evaluate_pipeline(pipe_lrn, X = train_x, y = train_y)
+results_mod = evaluate_pipeline(pipe_lrn, X = text, y = train_y)
 results['naive'] = results_mod
 print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
 
 # baseline score: Logistic Regression 
-lrn_basic = linear_model.LogisticRegression(class_weight = 'balanced')
+lrn_basic = linear_model.LogisticRegression(class_weight = 'balanced', random_state = 33)
 pipe_lrn = create_simple_pipeline(lrn_basic)
-results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
+results_mod = evaluate_pipeline(pipe_lrn, text, train_y)
 results['logreg_basic'] = results_mod
 print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
 
-h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
-                      title = 'Learning Curves (Logistic Classifer)')
-
-# Naive Bayes
-lrn = naive_bayes.ComplementNB()
-pipe_lrn = create_simple_pipeline(lrn)
-results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
-results['naive_bayes'] = results_mod
-print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
-
-h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
-                      title = 'Learning Curves (NB Classifer)')
-
-# Extratrees 
-lrn = ExtraTreesClassifier(n_estimators = 500, max_depth = 10,
-                           class_weight = 'balanced', warm_start=True)
-pipe_lrn = create_simple_pipeline(lrn)
-results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
-results['extraTrees'] = results_mod
-print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
-
-h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
-                      title = 'Learning Curves (ExtraTrees Classifer)')
-
-# AdaBoost Model
-lrn = AdaBoostClassifier(random_state = 33, n_estimators=500)
-pipe_lrn = create_simple_pipeline(lrn)
-results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
-results['Adaboost'] = results_mod
-print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
-
-h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
-                      title = 'Learning Curves (Ada Classifer)')
-
-# Xgboost
-lrn = xgboost.XGBClassifier(max_depth=10, learning_rate=0.1, subsample=1,
-                            n_estimators=500, objective='binary:logistic',
-                            colsample_bytree=0.8, gamma=1,
-                            random_state=33)
-pipe_lrn = create_simple_pipeline(lrn)
-results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y, cpus = 1)
-results['xgboost'] = results_mod
-print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
-
-h.plot_learning_curve(pipe_lrn, train_x, train_y, cv=3, n_jobs=3, 
-                      title = 'Learning Curves (XG Classifer)')
-
-# 5.1 Feature Engineering: Ngram and noise reduction ---------------------------
+h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3, 
+                      title = 'Learning Curves (Logistic Classifer)')    
+    
+# 5. Feature Engineering ------------------------------------------------------
+# 5.1 Feature Engineering: Ngram and noise reduction 
 # One problem is the vast amount of text features generated in CountVectorizer
 # much of them are pure noise
 count_vect = CountVectorizer(binary = True)
-count_vect.fit(train_x)
-xtrain_count = count_vect.transform(train_x)
+count_vect.fit(text)
+xtrain_count = count_vect.transform(text)
 xtrain_count.shape
 print('The document-term matrix of xtrain has {} terms'.format(xtrain_count.shape[1]))
 
@@ -274,67 +283,104 @@ print('A total of {} ({}% total) terms appear at least in 5 document'.format(fiv
 # Filter noise words (term count < 3) check performance with baseline
 # Logistic Regression without noise terms
 pipe_lrn = create_simple_pipeline(lrn_basic, term_count = 3)
-results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y) 
+results_mod = evaluate_pipeline(pipe_lrn, text, train_y) 
 
 # The elimination of ~70% of terms showed same performance to baseline CV
+# And reduced train to test CV scores thus reducing overfit
 print('The mean train {} and test CV {} of noise reduce data.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
+
+h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3, 
+                      title = 'Learning Curves (Logistic Classifer)')    
 
 # ¿What if we use bigrams and trigrams? Our dimensionality increases significantly
 count_vect = CountVectorizer(binary = True, ngram_range = [1,3])
-count_vect.fit(train_x)
-xtrain_count = count_vect.transform(train_x)
+count_vect.fit(text)
+xtrain_count = count_vect.transform(text)
 xtrain_count.shape
 print('The DTM of bi-trigrams has {}MM terms'.format(round(xtrain_count.shape[1]/1e6,1)))
 
 # Logistic Regression with bigram and trigrams ngrams
 # Shows same performance to base test CV, but better in train CV
 pipe_lrn = create_simple_pipeline(lrn_basic, ngram =[1,3], term_count = 1)
-results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
+results_mod = evaluate_pipeline(pipe_lrn, text, train_y)
 
 # Performance improved by using bigram and trigrams
 print('The mean train {} and test CV {} of ngrams.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
 
 # Following the same criteria as before by filtering noise terms 
 count_vect = CountVectorizer(binary = True, ngram_range = [1,3], min_df = 2)
-count_vect.fit(train_x)
-xtrain_count = count_vect.transform(train_x)
+count_vect.fit(text)
+xtrain_count = count_vect.transform(text)
 xtrain_count.shape
 print('The DTM of bi-trigrams has reduce to {} terms'.format(xtrain_count.shape[1]))
 
 pipe_lrn = create_simple_pipeline(lrn_basic, ngram = [1,3], term_count = 3)
-results_mod = evaluate_pipeline(pipe_lrn, train_x, train_y)
+results_mod = evaluate_pipeline(pipe_lrn, text, train_y)
 
 # Logistic Regression performance decreases by filtering noise words when using bi-trigrams
+# but is the same comparing to baseline. Noise reduction reduces overfitting. 
 print('The mean train {} and test CV {} of ngrams.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
+
+h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3, 
+                      title = 'Learning Curves (Logistic Classifer)')    
 
 # 5.2 Feature Engineering: Topic Modelling LSA ---------------------------
 # Another way to reduce dimension and noise is to perform Latent Semantic Analysis
 # LSA uses truncated SVD which reduces dimensionality of the DTM matrix
 # With the resulting matrices LSA can then construct topics which may be use as a feature
-# To improve interpretation I will replace words with collocations previously found
 
-collocations = h.get_collocations(train_x)
-
-# Replacing collocations in questions to improve interpretability
+# Get Bigrams
+collocations = h.get_collocations(text)
 bigramer = Phraser(collocations['bigramer']) # faster implementation
-train_tokens = [sentence.split() for sentence in train_x]
-train_tokens_col = [bigramer[tokens] for tokens in tqdm(train_tokens)]
+train_tokens = [sentence.split() for sentence in text]
+text_bigram = [' '.join(bigramer[tokens]) for tokens in tqdm(train_tokens)] # replace back
 
-model_list, coherence_values = h.compute_coherence_values(train_tokens_col, 80, 50, 3) # Determine the number of topics 
+# Get Trigrams
+collocations = h.get_collocations(text_bigram)
+trigramer = Phraser(collocations['bigramer']) # faster implementation
+train_tokens = [sentence.split() for sentence in text_bigram]
+bi_tri_tokens = [trigramer[tokens] for tokens in tqdm(train_tokens)] 
 
-# It appears that between 20-25 the coherence values is maximum
-model_list, coherence_values = h.compute_coherence_values(train_tokens_col, 25, 20, 1)
-x = pd.DataFrame({'Topic': range(20, 25), 'Coherence': coherence_values})
-ax = sns.pointplot(x = 'Topic', y = 'Coherence', data = x, linestyles=["--"]) # 22 topics
+model_list, coherence_values = h.compute_coherence_values(bi_tri_tokens, # Determine the number of topics 
+                                                          start = 2, 
+                                                          stop = 30, 
+                                                          step = 2) 
 
-# Inspecting 22 topics
+x = pd.DataFrame({'Topic': range(2, 30, 2), 'Coherence': coherence_values})
+ax = sns.pointplot(x = 'Topic', y = 'Coherence', data = x, linestyles=["--"]) # 2 topics
 
+# Saving Topic Results
+with open('Data/Topic_LSA_Results.pkl', 'wb') as output:
+    pickle.dump({'model_lis': model_list, 
+                 'coherence_values': coherence_values, 
+                 'topic_df': x}, output, pickle.HIGHEST_PROTOCOL)
 
+# Inspecting 20 topics
+[x.num_topics == 2 for x in model_list]
+lsa_model = model_list[0]
+lsa_model.print_topics(num_topics=2, num_words=20)
+
+# Asigning topic to train_set
+# Get Bigrams
+train_tokens = [sentence.split() for sentence in train_set.qt_clean_stop]
+text_bigram = [' '.join(bigramer[tokens]) for tokens in tqdm(train_tokens)] # replace back
+
+# Get Trigrams
+train_tokens = [sentence.split() for sentence in text_bigram]
+bi_tri_tokens = [trigramer[tokens] for tokens in tqdm(train_tokens)] 
+
+dictionary,doc_term_matrix = h.prepare_corpus(bi_tri_tokens, min_doc = 3)
+test = [h.get_topics(lsa_model, x) for x in tqdm(doc_term_matrix)]
+
+# Saving topic feature
+with open('Data/train_lsa_feat.pkl', 'wb') as output:
+    pickle.dump(train_set, output, pickle.HIGHEST_PROTOCOL)
+    
 # 5.3 Feature Engineering: Feature Selection ----------------------------------
 # Another posibility is to performe feature selection on the text vectors
 # Chi-Squared for Feature Selection
 tfidf = TfidfVectorizer(ngram_range = [1,3], analyzer='word')  
-train_tfidf = tfidf.fit_transform(train_x) 
+train_tfidf = tfidf.fit_transform(text) 
 chi2score = chi2(train_tfidf, train_y)
 scores_df = pd.DataFrame({'words':tfidf.get_feature_names(), 
                        'chi_squared':chi2score[0],
@@ -354,16 +400,41 @@ plt.xlabel('Chi_squared')
 
 # Construct new vocabulary with these words and run logistic reg
 tfidf = TfidfVectorizer(ngram_range = [1,3], vocabulary = best_chi.words)  
-train_tfidf = tfidf.fit_transform(train_x) 
+train_tfidf = tfidf.fit_transform(text) 
 
 # Logistic Regression with feature selection
 # Feature selection allows to reduce barely afecting baseline performance
-results_mod = evaluate_pipeline(lrn, train_tfidf, train_y)
+results_mod = evaluate_pipeline(lrn_basic, train_tfidf, train_y)
 print('The mean train {} and test CV {} of ngrams.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
 
-# 5.3 Feature Engineering: Document features ----------------------------------
+# 6. Modelling ----------------------------------------------------------------
+
+models = {'logreg_basic': linear_model.LogisticRegression(class_weight = 'balanced', random_state = 33),
+          'ridge': 
+          'naive_bayes': naive_bayes.ComplementNB(random_state = 33),
+          'extratrees': ExtraTreesClassifier(random_state = 33,class_weight = 'balanced', warm_start=True),
+          'adaboost': AdaBoostClassifier(random_state = 33)}
 
 
+def testing_models    
+    
+    
+lrn = linear_model.ElasticNet(random_state = 33)
+pipe_lrn = create_simple_pipeline(lrn)
+results_mod = evaluate_pipeline(pipe_lrn, text, train_y)
+print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
+
+h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3, 
+                      title = 'Learning Curves (NB Classifer)')
+
+
+h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3, 
+                      title = 'Learning Curves (Ada Classifer)')
+
+
+
+
+parameters = {'n_estimators' : [50,100,200,400], 'learning_rate' : [0.001,0.01,0.1,1]}
 
 
 

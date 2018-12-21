@@ -15,6 +15,8 @@ from sklearn.model_selection import learning_curve
 from gensim import corpora
 from gensim.models import LsiModel, TfidfModel, phrases 
 from gensim.models.coherencemodel import CoherenceModel
+from textblob import TextBlob, Blobber
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import string as st
 import pandas as pd
 import numpy as np
@@ -299,7 +301,7 @@ def pickle_load(file_path):
     with open(file_path, "rb") as f:
         return pickle.load(MacOSFile(f))
 
-def prepare_corpus(doc_clean):
+def prepare_corpus(doc_clean, min_doc = 1):
     """
     Input  : clean document
     Purpose: create term dictionary of our courpus and Converting list of documents (corpus) into Document Term Matrix
@@ -307,6 +309,8 @@ def prepare_corpus(doc_clean):
     """
     # Creating the term dictionary of our courpus, where every unique term is assigned an index. dictionary = corpora.Dictionary(doc_clean)
     dictionary = corpora.Dictionary(doc_clean)
+    # Filtering extremes
+    dictionary.filter_extremes(no_below=min_doc)
     # Converting list of documents (corpus) into Document Term Matrix using dictionary prepared above.
     doc_term_matrix = [dictionary.doc2bow(doc) for doc in doc_clean]
     # Applying TFIDF to corpus
@@ -314,21 +318,21 @@ def prepare_corpus(doc_clean):
     corpus_tfidf = tfidf[doc_term_matrix]
     return dictionary,corpus_tfidf
 
-def create_gensim_lsa_model(doc_clean,number_of_topics,words):
+def create_gensim_lsa_model(doc_clean,number_of_topics,words, min_doc = 1):
     """
     Input  : clean document, number of topics and number of words associated with each topic
     Purpose: create LSA model using gensim
     Output : return LSA model
     """
     print('Preparing Corpus with TFIDF...')
-    dictionary,doc_term_matrix = prepare_corpus(doc_clean)
+    dictionary,doc_term_matrix = prepare_corpus(doc_clean, min_doc = min_doc)
 
     # generate LSA model
     lsamodel = LsiModel(doc_term_matrix, num_topics=number_of_topics, id2word = dictionary)  # train model
     print(lsamodel.print_topics(num_topics=number_of_topics, num_words=words))
     return lsamodel
 
-def compute_coherence_values(doc_clean, stop, start=2, step=3):
+def compute_coherence_values(doc_clean, start=2, stop = 10, step=2, min_doc = 1):
     """
     Input   : dictionary : Gensim dictionary
               corpus : Gensim corpus
@@ -340,7 +344,7 @@ def compute_coherence_values(doc_clean, stop, start=2, step=3):
     """
     
     print('Preparing Corpus with TFIDF...')
-    dictionary,doc_term_matrix = prepare_corpus(doc_clean)
+    dictionary,doc_term_matrix = prepare_corpus(doc_clean, min_doc = min_doc)
     
     coherence_values = []
     model_list = []
@@ -352,13 +356,181 @@ def compute_coherence_values(doc_clean, stop, start=2, step=3):
         coherence_values.append(coherencemodel.get_coherence())
     return model_list, coherence_values
 
+def get_topics(model, dtm):
+    topics = model[dtm]
+    topics = sorted(topics, reverse=True, key=lambda x: x[1])
+    topic = 'T' + str(topics[0][0])
+    return(topic)
+    
+# function to check and get the part of speech tag count of a words in a given sentence
+def check_pos_tag(x, flag):
+    pos_family = {
+    'noun' : ['NN','NNS','NNP','NNPS'],
+    'pron' : ['PRP','PRP$','WP','WP$'],
+    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
+    'adj' :  ['JJ','JJR','JJS'],
+    'adv' : ['RB','RBR','RBS','WRB']
+    }
+    
+    cnt = 0
+    wiki = TextBlob(x)
+    for tup in wiki.tags:
+        ppo = list(tup)[1]
+        if ppo in pos_family[flag]:
+            cnt += 1
 
+    return cnt
 
+def check_nouns(x): 
+    flag = 'noun'
+    pos_family = {
+    'noun' : ['NN','NNS','NNP','NNPS'],
+    'pron' : ['PRP','PRP$','WP','WP$'],
+    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
+    'adj' :  ['JJ','JJR','JJS'],
+    'adv' : ['RB','RBR','RBS','WRB']
+    }
+    
+    cnt = 0
+    wiki = TextBlob(x)
+    for tup in wiki.tags:
+        ppo = list(tup)[1]
+        if ppo in pos_family[flag]:
+            cnt += 1
 
+    return cnt
 
+def check_pron(x): 
+    flag = 'pron'
+    pos_family = {
+    'noun' : ['NN','NNS','NNP','NNPS'],
+    'pron' : ['PRP','PRP$','WP','WP$'],
+    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
+    'adj' :  ['JJ','JJR','JJS'],
+    'adv' : ['RB','RBR','RBS','WRB']
+    }
+    
+    cnt = 0
+    wiki = TextBlob(x)
+    for tup in wiki.tags:
+        ppo = list(tup)[1]
+        if ppo in pos_family[flag]:
+            cnt += 1
 
+    return cnt
 
+def check_verbs(x): 
+    flag = 'verb'
+    pos_family = {
+    'noun' : ['NN','NNS','NNP','NNPS'],
+    'pron' : ['PRP','PRP$','WP','WP$'],
+    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
+    'adj' :  ['JJ','JJR','JJS'],
+    'adv' : ['RB','RBR','RBS','WRB']
+    }
+    
+    cnt = 0
+    wiki = TextBlob(x)
+    for tup in wiki.tags:
+        ppo = list(tup)[1]
+        if ppo in pos_family[flag]:
+            cnt += 1
 
+    return cnt
+
+def check_adj(x): 
+    flag = 'adj'
+    pos_family = {
+    'noun' : ['NN','NNS','NNP','NNPS'],
+    'pron' : ['PRP','PRP$','WP','WP$'],
+    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
+    'adj' :  ['JJ','JJR','JJS'],
+    'adv' : ['RB','RBR','RBS','WRB']
+    }
+    
+    cnt = 0
+    wiki = TextBlob(x)
+    for tup in wiki.tags:
+        ppo = list(tup)[1]
+        if ppo in pos_family[flag]:
+            cnt += 1
+
+    return cnt
+
+def check_adv(x): 
+    flag = 'adv'
+    pos_family = {
+    'noun' : ['NN','NNS','NNP','NNPS'],
+    'pron' : ['PRP','PRP$','WP','WP$'],
+    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
+    'adj' :  ['JJ','JJR','JJS'],
+    'adv' : ['RB','RBR','RBS','WRB']
+    }
+    
+    cnt = 0
+    wiki = TextBlob(x)
+    for tup in wiki.tags:
+        ppo = list(tup)[1]
+        if ppo in pos_family[flag]:
+            cnt += 1
+
+    return cnt
+
+def NB_sentimenter(text, classifier, positivity = True):
+    sent = classifier(text)
+    
+    if (positivity):
+        get_score = sent.sentiment[1] # positivity
+    else:
+        get_score = sent.sentiment[2] # negativty
+
+    return(get_score)
+
+def parallel_process(array, function, n_jobs=6, use_kwargs=False, front_num=3):
+    """
+        A parallel version of the map function with a progress bar. 
+
+        Args:
+            array (array-like): An array to iterate over.
+            function (function): A python function to apply to the elements of array
+            n_jobs (int, default=16): The number of cores to use
+            use_kwargs (boolean, default=False): Whether to consider the elements of array as dictionaries of 
+                keyword arguments to function 
+            front_num (int, default=3): The number of iterations to run serially before kicking off the parallel job. 
+                Useful for catching bugs
+        Returns:
+            [function(array[0]), function(array[1]), ...]
+    """
+    #We run the first few iterations serially to catch bugs
+    if front_num > 0:
+        front = [function(**a) if use_kwargs else function(a) for a in array[:front_num]]
+    #If we set n_jobs to 1, just run a list comprehension. This is useful for benchmarking and debugging.
+    if n_jobs==1:
+        return front + [function(**a) if use_kwargs else function(a) for a in tqdm(array[front_num:])]
+    #Assemble the workers
+    with ProcessPoolExecutor(max_workers=n_jobs) as pool:
+        #Pass the elements of array into function
+        if use_kwargs:
+            futures = [pool.submit(function, **a) for a in array[front_num:]]
+        else:
+            futures = [pool.submit(function, a) for a in array[front_num:]]
+        kwargs = {
+            'total': len(futures),
+            'unit': 'it',
+            'unit_scale': True,
+            'leave': True
+        }
+        #Print out the progress as tasks complete
+        for f in tqdm(as_completed(futures), **kwargs):
+            pass
+    out = []
+    #Get the results from the futures. 
+    for i, future in tqdm(enumerate(futures)):
+        try:
+            out.append(future.result())
+        except Exception as e:
+            out.append(e)
+    return front + out
 
 
 

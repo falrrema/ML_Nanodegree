@@ -36,8 +36,6 @@ import xgboost
 import pickle
 import matplotlib.pyplot as plt
 
-%matplotlib inline
-
 # Loading helper functions
 import helper as h
 pd.set_option('float_format', '{:f}'.format)
@@ -218,7 +216,6 @@ train_x, valid_x, train_y, valid_y = model_selection.train_test_split(pretrain_x
 
 text = train_x.qt_clean_stop
 
-
 # Defining pipeline and evaluation functions
 def create_simple_pipeline(learner, analyzer = 'word', ngram = [1,1], term_count = 1):
     estimators = []
@@ -338,9 +335,7 @@ h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3,
 # LSA uses truncated SVD which reduces dimensionality of the DTM matrix
 # With the resulting matrices LSA can then construct topics which may be use as a feature
 
-# Saving Topic Results
-with open('Data/Topic_LSA_Results.pkl', 'rb') as input:
-    lda_dict = pickle.load(input)
+text = train_x.qt_clean
 
 # Get Bigrams
 collocations = h.get_collocations(text)
@@ -356,10 +351,10 @@ bi_tri_tokens = [trigramer[tokens] for tokens in tqdm(train_tokens)]
 
 model_list, coherence_values = h.compute_coherence_values(bi_tri_tokens, # Determine the number of topics 
                                                           start = 2, 
-                                                          stop = 30, 
+                                                          stop = 20, 
                                                           step = 2) 
 
-x = pd.DataFrame({'Topic': range(2, 30, 2), 'Coherence': coherence_values})
+x = pd.DataFrame({'Topic': range(2, 20, 2), 'Coherence': coherence_values})
 ax = sns.pointplot(x = 'Topic', y = 'Coherence', data = x, linestyles=["--"]) # 2 topics
 
 # Saving Topic Results
@@ -370,14 +365,14 @@ lda_dict = {'model_lis': model_list,
 with open('Data/Topic_LSA_Results.pkl', 'wb') as output:
     pickle.dump(lda_dict, output, pickle.HIGHEST_PROTOCOL)
 
-# Inspecting 2 topics
-[x.num_topics == 2 for x in model_list]
-lsa_model = model_list[0]
-lsa_model.print_topics(num_topics=2, num_words=20)
+# Inspecting 4 topics
+[x.num_topics == 4 for x in model_list]
+lsa_model = model_list[1]
+lsa_model.print_topics(num_topics=4, num_words=20)
 
 # Asigning topic to train_set
 # Get Bigrams
-train_tokens = [sentence.split() for sentence in train_set.qt_clean_stop]
+train_tokens = [sentence.split() for sentence in train_set.qt_clean]
 text_bigram = [' '.join(bigramer[tokens]) for tokens in tqdm(train_tokens)] # replace back
 
 # Get Trigrams

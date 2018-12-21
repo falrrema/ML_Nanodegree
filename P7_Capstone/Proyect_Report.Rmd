@@ -3,50 +3,11 @@ title: "Machine Learning Capstone Report"
 author: "Fabian Reyes"
 date: "December 2018"
 output:
-  pdf_document: default
   html_document:
     df_print: paged
+  pdf_document: default
 subtitle: Quora Insincere Questions Classification Project
 ---
-
-```{r setup, include=FALSE}
-# Setting enviroment
-knitr::opts_chunk$set(echo = TRUE)
-knitr::knit_engines$set(python = reticulate::eng_python)
-library(reticulate)
-use_python("/Users/Fabs/anaconda3/bin/")
-```
-
-```{python, include=FALSE}
-# Loading libraries
-from sklearn import model_selection, metrics, linear_model, naive_bayes
-from sklearn.ensemble import ExtraTreesClassifier, AdaBoostClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.svm import SVC
-from sklearn.feature_extraction.text import TfidfTransformer, CountVectorizer, TfidfVectorizer
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer
-from sklearn.dummy import DummyClassifier
-from sklearn.feature_selection import chi2, mutual_info_classif
-from tqdm import tqdm
-from nltk.corpus import stopwords
-from gensim.models.phrases import Phrases, Phraser
-from textblob import TextBlob, Blobber
-from textblob.sentiments import NaiveBayesAnalyzer
-import pandas as pd
-import numpy as np
-import seaborn as sns
-import xgboost
-import pickle
-import matplotlib.pyplot as plt
-
-pd.set_option('float_format', '{:f}'.format)
-```
-
-```{r, include=FALSE}
-# Loading helper functions
-source_python("helper.py")
-```
 
 # I. Definition
 ## Project Overview
@@ -71,7 +32,7 @@ To achieve this goal I intend to break down the problem into 3 parts:
     - Lemmatization: Standarise text data. A word may be express in multiple tense depending on the context. So lemmatization is the process of grouping together the inflected forms of a word so they can be analysed as a single item. 
     - Stopwords removal. Noise reduction. Many words serve as connectors in a sentence. They are the most common and frequent words in any language, thus they are usually not informative and are filtered out the analysis. 
 
-Most of them are standard transformations and have become canonical in most text classificaction tasks.
+Most of them are standard transformations and have become canonical in most text classificaction tasks. This proyect implemented a function called `clean_text` that applies all the transformations above and generated two columns: `qt_clean` a clean standarise text vector with stopwords and `qt_clean_stop` a clean standarise text vector without stopwords. 
 
 2. **Feature Extraction**: This is the most intensive part of this project. The main objective is to extract all the posible and informative features from the text for later modelling. A poor feature pool yields a poor classification model, thus my strategy will be:
     - Meta document features: These are all features related to the document statistics. They by itself are not strong predictors but in combination they can help the model gain more insight of the text. These are number of characters, number of words, word density, number of stopwords, number of punctuation marks, number of upper case words, number of nouns, verb, adjectives, pronouns, and adverbs. 
@@ -98,20 +59,75 @@ For univariate feature evaluation I will look into **chi-squared statistic** bet
 # II. Analysis
 ## Exploratory Data Analysis
 
-In this section I will go in deep in understanding the data, showing basic statistics and visualizations. 
+In this section I will go in deep in understanding the data, showing basic statistics and visualizations. First, lets see a sample of the data:
 
-```{python}
-# Loading Data
-train_set = pd.read_csv('Data/train.csv', encoding = 'latin1')
-plt.figure(figsize=(10,6))
-sns.set(font_scale=5)  # crazy big
-ax = sns.countplot(y="target", data=train_set, palette="Set1") # strong class imbalance 
-cnts = train_set.target.value_counts()
-plt.show()
-```
+![Sample of sincere (0) and insincere questions (1)](Images/sample_data.PNG)
 
+The dataset considered for this project can be found and downloaded from the competition site [11]. **The data set has a total of 1048575 rows and 3 columns**. The description of each column is as folliwing:
 
+- qid: unique question identifier
+- question_text: Quora question text
+- target: a question labeled "insincere" has a value of 1, otherwise 0
 
+The criteria’s to define an insincere question was based on the following characteristics:
+
+* Has a non-neutral tone: exaggerated tone or rhetorical tone meant to make a statement about a group of people.
+* Is disparaging or inflammatory: making discriminatory and/or harsh comments, or based on outlandish premise about a group of people.
+* Isn't grounded in reality: based of false information or absurd assumptions. 
+* Uses sexual content for shock value, and not to seek genuine answers
+
+As expected from this type of labeling, the ground-truth are not guaranteed to be perfect but suficient for the problem.
+
+![Evidence of class unbalance](Images/class_unbalance.PNG)
+
+As plotted above the data set is very unbalance. Therefore, I will take measures to reduce this problem during modelling (many models include a `class_weight = 'balanced` parameter to assign more weight to the lower class), and splitting data (`stratify` parameter).
+
+### Word level Statistics
+
+We will look into unigram and bigram frequency by target to find clues about the data.
+
+![Top unigrams by target](Images/unigra_frequency.PNG)
+
+A fast view of the most frequent unigrams show that sincere questions have usual words related to **asking verbs** and overall neutral words. However, insincere unigrams have more **sensitive nouns** like `indian`, `american`, `trump`, etc. 
+
+![Top bigrams by target](Images/bigram_frequency.PNG)
+
+Bigrams allow us a better understanding of what are the main ideas behind sincere and insincere questions. Its posible to see that many questions are related to find the `best` of place, book, way to do something. On the other hand, insincere questions focus **racial or gender or ethnic** group words. 
+
+### Document level Statistics
+
+We will now create basic meta document features to find **outliers**. These will be `word_count`, `character_count`,
+`word_density`. A quick view of `word_count` of cleaned standarise text vector without stopwords (`qt_clean_stop`) shows the following frequency:
+
+![Word Count of cleaned and standarise text vector without stopwords](Images/word_level_document_count.PNG)
+
+There are **66 documents** with zero words and **5723** questions with 1 non-stopword word. These documents show barely any relevant content, thus they will be remove from training set.
+
+![Word length histogram](Images/word_level_document_length.PNG)
+
+On the other hand, the histogram also shows that there are documents with more that **14 words (95% percentile)**, these are outliers and will be remove from training. Applying these filter reduces our data set by **10% (952400 rows)**.
+
+![Word length histogram](Images/boxplot_word_level_length.PNG)
+
+When taking a closer look at this variable separated by target, it seems that insincere questions tend to be more elaborate than sincere. On average there are **9 words** per insincere questions instead of **6 words** per sincere question. This phenomena, is also observe when analyzing `character_count`, but `word_density` is practically the same between both classes. 
+
+## Algorithms and Techniques
+
+The main algorithms are separated into two main groups:
+
+### Feature extraction algorithms
+
+    - **Bag of Words Model**: all text feature extraction will be done using this model. is represented as the bag (multiset) of its words, disregarding grammar and even word order but keeping multiplicity. However, although is a very simplistic representation, it has shown to be very usefull in a wide variety of natural language processing tasks. Python has two powerful NLP modules that implement this model, the `NLTK` and `gensim` modules. Both are going to be use for feature extraction. 
+    - **TF-IDF statistic**: TF-IDF score represents the relative importance of a term in the document and the entire corpus. TF-IDF score is composed by two terms: the first computes the normalized Term Frequency (TF), the second term is the Inverse Document Frequency (IDF), computed as the logarithm of the number of the documents in the corpus divided by the number of documents where the specific term appears [12]. This statistic normalization will be apply to all the text feature analysis. 
+
+### Classification algorithms
+    
+This is a binary classification task. Hence, the models that will be tested with pros and cons are:
+
+    - **Linear Models**: The main algorithm will be the logistic classifier implemented as `LogisticRegression()` in sci-kit learn. this algorithm is usually the *go-to* benchmark. Its usually very fast and scales excellent with data. If the data preprocessing is adequate, the performance is usual very decent. However, since its linear, it fails to grasp non-linearities in the data and many times underperforming in complex datasets. Also it suffers from multicollinearity. 
+    - **Naive Bayes**: Is a family of simple "probabilistic classifiers" based on applying Bayes' theorem with strong (naive) independence assumptions between the features. Naive Bayes classifiers are highly scalable, requiring a number of parameters linear in the number of variables (features/predictors) in a learning problem. Nevertheless, as with linear models, naive bayes suffers to grasp non-linearities in the data. Despite their naive design and apparently oversimplified assumptions, naive Bayes classifiers have worked quite well in many complex real-world situations, particularly in NLP tasks. For this project I will implement the `ComplementNB()`, this variant was designed to correct the “severe assumptions” made by the standard Multinomial Naive Bayes classifier. It is particularly suited for imbalanced data sets.
+    - **ExtraTrees**: In extremely randomized trees (`ExtraTreesClassifier()`), randomness goes one step further in the way splits are computed in comparison to standard random forest classifier. As in random forests, a random subset of candidate features is used, but instead of looking for the most discriminative thresholds, thresholds are drawn at random for each candidate feature and the best of these randomly-generated thresholds is picked as the splitting rule. This usually allows to reduce the variance of the model a bit more, at the expense of a slightly greater increase in bias. 
+    - **Adaboost**: Is one of the most popular and one of the first boosting algorithms. Its very easy to implement when using simple weak learners (i.e decision tree), its has a build in feature selection mechanism that results in a relatively simple classifier, and generalize well because of the use of multiple weak learners.  Its main drawback is that, because it tries to fit all data points, it is sensible to outliers and noisy data. In our dataset, I have a large data set with over a hundred text features so its likely that any model we choose is prune to overfit. Adaboost adapts to data learning from its mistakes and, as describe before, is generally tolerant to overfitting. Thus is a good candidate for the task. Sci-kit learns implements this classifier as `AdaBoostClassifier()`.
 
 ## References
 
@@ -134,3 +150,9 @@ plt.show()
 [9] https://scikit-learn.org/stable/modules/generated/sklearn.feature_selection.chi2.html. Scikit Learn Chi-squared statistic.
 
 [10] https://scikit-learn.org/stable/modules/generated/sklearn.feature_selection.mutual_info_classif.html#sklearn.feature_selection.mutual_info_classif. Scikit Learn Mutual Information.
+
+[11] https://www.kaggle.com/c/quora-insincere-questions-classification/data. General Description of Data.
+
+[12] https://www.analyticsvidhya.com/blog/2018/04/a-comprehensive-guide-to-understand-and-implement-text-classification-in-python/. Comprehensive guide to implement text classification in python. 
+
+[13] https://scikit-learn.org/stable/modules/ensemble.html#ensemble. Ensemble methods.

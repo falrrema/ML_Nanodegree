@@ -9,10 +9,43 @@ output:
 subtitle: Quora Insincere Questions Classification Project
 ---
 
-
 ```{r setup, include=FALSE}
+# Setting enviroment
 knitr::opts_chunk$set(echo = TRUE)
 knitr::knit_engines$set(python = reticulate::eng_python)
+library(reticulate)
+use_python("/Users/Fabs/anaconda3/bin/")
+```
+
+```{python, include=FALSE}
+# Loading libraries
+from sklearn import model_selection, metrics, linear_model, naive_bayes
+from sklearn.ensemble import ExtraTreesClassifier, AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+from sklearn.feature_extraction.text import TfidfTransformer, CountVectorizer, TfidfVectorizer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer
+from sklearn.dummy import DummyClassifier
+from sklearn.feature_selection import chi2, mutual_info_classif
+from tqdm import tqdm
+from nltk.corpus import stopwords
+from gensim.models.phrases import Phrases, Phraser
+from textblob import TextBlob, Blobber
+from textblob.sentiments import NaiveBayesAnalyzer
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import xgboost
+import pickle
+import matplotlib.pyplot as plt
+
+pd.set_option('float_format', '{:f}'.format)
+```
+
+```{r, include=FALSE}
+# Loading helper functions
+source_python("helper.py")
 ```
 
 # I. Definition
@@ -36,7 +69,7 @@ To achieve this goal I intend to break down the problem into 3 parts:
     - Punctuation removal: Standarise text data. Punctuation marks is a human readible code that helps us give rhtyms and intonation to our reading. For our task and strategy, most of it is noise. 
     - Special character removal: Standarise text data. Mainly accents and non latin characters. 
     - Lemmatization: Standarise text data. A word may be express in multiple tense depending on the context. So lemmatization is the process of grouping together the inflected forms of a word so they can be analysed as a single item. 
-    - Stopwords removal. Noise reduction. Many words serve as conectors in a sentence. They are the most common and frequent words in any language, thus they are usually not informative and are filtered out the analysis. 
+    - Stopwords removal. Noise reduction. Many words serve as connectors in a sentence. They are the most common and frequent words in any language, thus they are usually not informative and are filtered out the analysis. 
 
 Most of them are standard transformations and have become canonical in most text classificaction tasks.
 
@@ -63,6 +96,21 @@ $$\frac{2*precision*recall}{precision+recall}$$
 For univariate feature evaluation I will look into **chi-squared statistic** between each non-negative feature and class. Chi-square test measures dependence between stochastic variables, so using this function it filters out features that are the most likely to be independent of class and therefore irrelevant for classification [9]. In case negative features emerge (metafeature extraction por example), I will use a information gain feature evaluation like **Mutual information** implementation of scikit learn. Mutual information (MI) between two random variables is a non-negative value, which measures the dependency between the variables. It is equal to zero if and only if two random variables are independent, and higher values mean higher dependency [10].
 
 # II. Analysis
+## Exploratory Data Analysis
+
+In this section I will go in deep in understanding the data, showing basic statistics and visualizations. 
+
+```{python}
+# Loading Data
+train_set = pd.read_csv('Data/train.csv', encoding = 'latin1')
+plt.figure(figsize=(10,6))
+sns.set(font_scale=5)  # crazy big
+ax = sns.countplot(y="target", data=train_set, palette="Set1") # strong class imbalance 
+cnts = train_set.target.value_counts()
+plt.show()
+```
+
+
 
 
 ## References

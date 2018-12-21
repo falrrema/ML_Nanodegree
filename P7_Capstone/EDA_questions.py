@@ -105,7 +105,14 @@ figure_size=(8,10), scale = 2, collocations = False)
 
 h.comparison_plot(wf_sincere[:20],wf_insincere[:20],'ngram','count', .7)
 
+# Saving Preprocessing 
+with open('Data/train_word_cloud.pkl', 'wb') as output:
+    pickle.dump(train_set, output, pickle.HIGHEST_PROTOCOL)
+
 # 3.2 Document level Statistics
+with open('Data/train_word_cloud.pkl', 'rb') as input:
+    train_set = pickle.load(input)
+
 # Creating several document derived features
 train_set['char_count'] = train_set.qt_clean_stop.progress_apply(len) # char clean count
 train_set['word_count'] = train_set.qt_clean_stop.progress_apply(lambda x: len(x.split())) # word clean count
@@ -150,8 +157,10 @@ with open('Data/train_preproc.pkl', 'wb') as output:
     pickle.dump(train_set, output, pickle.HIGHEST_PROTOCOL)
 
 # 4 Document Meta features ----------------------------------------------------
-# These festures may aid text feature modelling
-
+# These features may aid text feature modelling
+with open('Data/train_preproc.pkl', 'rb') as input:
+    train_set = pickle.load(input)
+    
 # Basic features
 train_set['char_count'] = train_set.qt_clean_stop.progress_apply(len) # char clean count
 train_set['word_count'] = train_set.qt_clean_stop.progress_apply(lambda x: len(x.split())) # word clean count
@@ -329,6 +338,10 @@ h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3,
 # LSA uses truncated SVD which reduces dimensionality of the DTM matrix
 # With the resulting matrices LSA can then construct topics which may be use as a feature
 
+# Saving Topic Results
+with open('Data/Topic_LSA_Results.pkl', 'rb') as input:
+    lda_dict = pickle.load(input)
+
 # Get Bigrams
 collocations = h.get_collocations(text)
 bigramer = Phraser(collocations['bigramer']) # faster implementation
@@ -350,12 +363,14 @@ x = pd.DataFrame({'Topic': range(2, 30, 2), 'Coherence': coherence_values})
 ax = sns.pointplot(x = 'Topic', y = 'Coherence', data = x, linestyles=["--"]) # 2 topics
 
 # Saving Topic Results
-with open('Data/Topic_LSA_Results.pkl', 'wb') as output:
-    pickle.dump({'model_lis': model_list, 
-                 'coherence_values': coherence_values, 
-                 'topic_df': x}, output, pickle.HIGHEST_PROTOCOL)
+lda_dict = {'model_lis': model_list, 
+             'coherence_values': coherence_values, 
+             'topic_df': x}
 
-# Inspecting 20 topics
+with open('Data/Topic_LSA_Results.pkl', 'wb') as output:
+    pickle.dump(lda_dict, output, pickle.HIGHEST_PROTOCOL)
+
+# Inspecting 2 topics
 [x.num_topics == 2 for x in model_list]
 lsa_model = model_list[0]
 lsa_model.print_topics(num_topics=2, num_words=20)
@@ -369,7 +384,7 @@ text_bigram = [' '.join(bigramer[tokens]) for tokens in tqdm(train_tokens)] # re
 train_tokens = [sentence.split() for sentence in text_bigram]
 bi_tri_tokens = [trigramer[tokens] for tokens in tqdm(train_tokens)] 
 
-dictionary,doc_term_matrix = h.prepare_corpus(bi_tri_tokens, min_doc = 3)
+dictionary,doc_term_matrix = h.prepare_corpus(bi_tri_tokens)
 test = [h.get_topics(lsa_model, x) for x in tqdm(doc_term_matrix)]
 
 # Saving topic feature
@@ -408,15 +423,22 @@ results_mod = evaluate_pipeline(lrn_basic, train_tfidf, train_y)
 print('The mean train {} and test CV {} of ngrams.'.format(round(results_mod['train_score'], 2),round(results_mod['test_score'], 2)))
 
 # 6. Modelling ----------------------------------------------------------------
-
 models = {'logreg_basic': linear_model.LogisticRegression(class_weight = 'balanced', random_state = 33),
-          'ridge': 
-          'naive_bayes': naive_bayes.ComplementNB(random_state = 33),
-          'extratrees': ExtraTreesClassifier(random_state = 33,class_weight = 'balanced', warm_start=True),
+          'naive_bayes': naive_bayes.ComplementNB(),
+          'extratrees': ExtraTreesClassifier(random_state = 33, class_weight = 'balanced', warm_start=True),
           'adaboost': AdaBoostClassifier(random_state = 33)}
 
-
-def testing_models    
+def testing_models(train_x, train_y, valid_x, valid_y, models, cv = 5, seed = 33, cpus = 5):
+    kfold = model_selection.KFold(n_splits=cv, random_state=seed)
+    
+    for model in models:
+        results = model_selection.cross_validate(model, train_x, train_y, scoring = 'f1',
+                                                  cv=kfold, n_jobs=cpus, 
+                                                  verbose = True, 
+                                                  return_train_score=True)
+        results = pd.DataFrame(results).mean(axis=0)
+        model.fit(train_x, train_y)
+        predictions_valid = learner.predict(valid_x)
     
     
 lrn = linear_model.ElasticNet(random_state = 33)
@@ -426,13 +448,6 @@ print('The mean train {} and test CV {}.'.format(round(results_mod['train_score'
 
 h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3, 
                       title = 'Learning Curves (NB Classifer)')
-
-
-h.plot_learning_curve(pipe_lrn, text, train_y, cv=3, n_jobs=3, 
-                      title = 'Learning Curves (Ada Classifer)')
-
-
-
 
 parameters = {'n_estimators' : [50,100,200,400], 'learning_rate' : [0.001,0.01,0.1,1]}
 

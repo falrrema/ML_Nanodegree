@@ -17,6 +17,7 @@ from gensim.models import LsiModel, TfidfModel, phrases
 from gensim.models.coherencemodel import CoherenceModel
 from textblob import TextBlob, Blobber
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from IPython.display import display_html
 import string as st
 import pandas as pd
 import numpy as np
@@ -301,7 +302,7 @@ def pickle_load(file_path):
     with open(file_path, "rb") as f:
         return pickle.load(MacOSFile(f))
 
-def prepare_corpus(doc_clean, min_doc = 1):
+def prepare_corpus(doc_clean):
     """
     Input  : clean document
     Purpose: create term dictionary of our courpus and Converting list of documents (corpus) into Document Term Matrix
@@ -309,8 +310,6 @@ def prepare_corpus(doc_clean, min_doc = 1):
     """
     # Creating the term dictionary of our courpus, where every unique term is assigned an index. dictionary = corpora.Dictionary(doc_clean)
     dictionary = corpora.Dictionary(doc_clean)
-    # Filtering extremes
-    dictionary.filter_extremes(no_below=min_doc)
     # Converting list of documents (corpus) into Document Term Matrix using dictionary prepared above.
     doc_term_matrix = [dictionary.doc2bow(doc) for doc in doc_clean]
     # Applying TFIDF to corpus
@@ -318,14 +317,14 @@ def prepare_corpus(doc_clean, min_doc = 1):
     corpus_tfidf = tfidf[doc_term_matrix]
     return dictionary,corpus_tfidf
 
-def create_gensim_lsa_model(doc_clean,number_of_topics,words, min_doc = 1):
+def create_gensim_lsa_model(doc_clean,number_of_topics,words):
     """
     Input  : clean document, number of topics and number of words associated with each topic
     Purpose: create LSA model using gensim
     Output : return LSA model
     """
     print('Preparing Corpus with TFIDF...')
-    dictionary,doc_term_matrix = prepare_corpus(doc_clean, min_doc = min_doc)
+    dictionary,doc_term_matrix = prepare_corpus(doc_clean)
 
     # generate LSA model
     lsamodel = LsiModel(doc_term_matrix, num_topics=number_of_topics, id2word = dictionary)  # train model
@@ -344,7 +343,7 @@ def compute_coherence_values(doc_clean, start=2, stop = 10, step=2, min_doc = 1)
     """
     
     print('Preparing Corpus with TFIDF...')
-    dictionary,doc_term_matrix = prepare_corpus(doc_clean, min_doc = min_doc)
+    dictionary,doc_term_matrix = prepare_corpus(doc_clean)
     
     coherence_values = []
     model_list = []
@@ -533,10 +532,19 @@ def parallel_process(array, function, n_jobs=6, use_kwargs=False, front_num=3):
     return front + out
 
 
-
-
-
-
+def mydisplay(dfs, names=[]):
+    html_str = ''
+    if names:
+        html_str += ('<tr>' + 
+                     ''.join(f'<td style="text-align:center">{name}</td>' for name in names) + 
+                     '</tr>')
+    html_str += ('<tr>' + 
+                 ''.join(f'<td style="vertical-align:top"> {df.to_html(index=False)}</td>' 
+                         for df in dfs) + 
+                 '</tr>')
+    html_str = f'<table>{html_str}</table>'
+    html_str = html_str.replace('table','table style="display:inline"')
+    display_html(html_str, raw=True)
 
 
 

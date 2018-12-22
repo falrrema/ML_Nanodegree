@@ -3,9 +3,9 @@ title: "Machine Learning Capstone Report"
 author: "Fabian Reyes"
 date: "December 2018"
 output:
+  pdf_document: default
   html_document:
     df_print: paged
-  pdf_document: default
 subtitle: Quora Insincere Questions Classification Project
 ---
 
@@ -22,32 +22,6 @@ This task is part of a subfield called Natural Language Processing (NLP), which 
 
 Quora is a platform that empowers people to learn from each other, thus it’s been a frequent target for abusive content. Quora wants to keep their platform as a place where users can feel safe sharing their knowledge with the world, therefore it wants to face this problem by hosting a Kaggle competition aimed at **identifying** and **flagging** insincere questions [8].  By definition an insincere question is a question which is founded upon false premises, or that intend to make a statement rather than look for helpful answers. Quora wants kagglers to develop **scalable methods and models** that will help achieve this goal.
 
-To achieve this goal I intend to break down the problem into 3 parts:
-
-1. **Text cleaning process**: The main objective of this part is to apply a series of transformations to the text data know as text preprocessing techniques. These techniques have been shown to improve, standarise and facilitate modelling. The techniques are de following:
-
-    - Lower casing: Standarise text data. Python, for example, finds that `Hello` and `hello` are to different strings. 
-    - Punctuation removal: Standarise text data. Punctuation marks is a human readible code that helps us give rhtyms and intonation to our reading. For our task and strategy, most of it is noise. 
-    - Special character removal: Standarise text data. Mainly accents and non latin characters. 
-    - Lemmatization: Standarise text data. A word may be express in multiple tense depending on the context. So lemmatization is the process of grouping together the inflected forms of a word so they can be analysed as a single item. 
-    - Stopwords removal. Noise reduction. Many words serve as connectors in a sentence. They are the most common and frequent words in any language, thus they are usually not informative and are filtered out the analysis. 
-
-Most of them are standard transformations and have become canonical in most text classificaction tasks. This proyect implemented a function called `clean_text` that applies all the transformations above and generated two columns: `qt_clean` a clean standarise text vector with stopwords and `qt_clean_stop` a clean standarise text vector without stopwords. 
-
-2. **Feature Extraction**: This is the most intensive part of this project. The main objective is to extract all the posible and informative features from the text for later modelling. A poor feature pool yields a poor classification model, thus my strategy will be:
-    - Meta document features: These are all features related to the document statistics. They by itself are not strong predictors but in combination they can help the model gain more insight of the text. These are number of characters, number of words, word density, number of stopwords, number of punctuation marks, number of upper case words, number of nouns, verb, adjectives, pronouns, and adverbs. 
-    - Sentiment Features: Words in all language have an inherent sentiment behind it. Most of the time it depends on the context of what it is said. However, words like `Happiness` almost all of the time is positive. Many libraries exist today that are able to score a group of words and approximate a sentiment. So I will make use of the powerfull `TextBlob` package to extract polarity, subjectivity and positivity of the questions. 
-    - Text features: I will decompose each text into a document-term matrix, describes the frequency of terms that occur in a collection of documents. The matrix consist of (m x n) dimensions beign **m** the number of documents or questions and **n** the terms which are present in the documents. Since each documents consist of a small portion of the whole vocabulary of the set, most of the matrix is extremely sparse and noisy. This is even worse when considering not only words, but bigrams or trigrams of words. To reduce noise, I will normalize each term using Term Frequency (TF) Inverse Document Frequency (IDF) statistic which generally improves modelling performance. Moreover, I will filter-out high sparse terms and perform feature selection using chi-squared statistic. 
-    - Topic features: I will reduce dimensionality and cluster documents by performing Latente Semantic Analysis. This technique analyzes relationships between a set of documents and the terms they contain by producing a set of concepts related to the documents and terms.
-
-3. **Modelling**. To extract the most out of the features I will emsemble different models on different set of features and the predictions of this group of models will be pooled to a master classifier that will produce the classification task. I will use a mixture of the following classifiers:
-    + Logistic Regression (base learner)
-    + Naive Bayes
-    + Extratrees (very similar to randomforest but faster)
-    + AdaBoost 
-    
-I will support my modelling with learning curves and cross-validation (5-fold) methodology. 
-
 ## Metrics
 
 As we will se in the exploratory section of this report, our data set is very unbalanced. Therefore, and as recommended in the kaggle competition, I will use de F1-score for model performance. This metrics considers both precision and recall, thus is very helpful in this case because we are dealing with an unbalanced dataset. The formula used to obtain this metric is:
@@ -57,9 +31,9 @@ $$\frac{2*precision*recall}{precision+recall}$$
 For univariate feature evaluation I will look into **chi-squared statistic** between each non-negative feature and class. Chi-square test measures dependence between stochastic variables, so using this function it filters out features that are the most likely to be independent of class and therefore irrelevant for classification [9]. In case negative features emerge (metafeature extraction por example), I will use a information gain feature evaluation like **Mutual information** implementation of scikit learn. Mutual information (MI) between two random variables is a non-negative value, which measures the dependency between the variables. It is equal to zero if and only if two random variables are independent, and higher values mean higher dependency [10].
 
 # II. Analysis
-## Exploratory Data Analysis
+## Exploratory and Visual Data Analysis
 
-In this section I will go in deep in understanding the data, showing basic statistics and visualizations. First, lets see a sample of the data:
+In this section I will go in deep in understanding the data, showing basic statistics and visualizations. First, lets see a sample of the data in **Figure 1**.
 
 ![Sample of sincere (0) and insincere questions (1)](Images/sample_data.PNG)
 
@@ -82,34 +56,37 @@ As expected from this type of labeling, the ground-truth are not guaranteed to b
 
 As plotted above the data set is very unbalance. Therefore, I will take measures to reduce this problem during modelling (many models include a `class_weight = 'balanced` parameter to assign more weight to the lower class), and splitting data (`stratify` parameter).
 
-### Word level Statistics
+### Word Level Exploration
 
-We will look into unigram and bigram frequency by target to find clues about the data.
+A first approach to understand the problem at hand is to visualize the questions and calculate basic frequency statistics of words. 
 
-![Top unigrams by target](Images/unigra_frequency.PNG)
+![Top unigrams by target](Images/unigram_frequency)
 
-A fast view of the most frequent unigrams show that sincere questions have usual words related to **asking verbs** and overall neutral words. However, insincere unigrams have more **sensitive nouns** like `indian`, `american`, `trump`, etc. 
+As you can se from the plots and tables above, its very dificult to extract a pattern between target classes. The main reason is because each document is clouded by **noise and common words that we call stopwords**. So one important step will be eliminating this noise words and standarise each word to the same forma
 
-![Top bigrams by target](Images/bigram_frequency.PNG)
+### Document level exploration
 
-Bigrams allow us a better understanding of what are the main ideas behind sincere and insincere questions. Its posible to see that many questions are related to find the `best` of place, book, way to do something. On the other hand, insincere questions focus **racial or gender or ethnic** group words. 
+I will now create 3 basic meta document features to find macro structures and **outliers**. These will be the `char_count_full`, `word_count_full`, and `word_density_full`. These features can give us an idea of the overall structure of the questions.
 
-### Document level Statistics
+![Summary statistics of 3 document level features](Images/document_word_stats.png)
 
-We will now create basic meta document features to find **outliers**. These will be `word_count`, `character_count`,
-`word_density`. A quick view of `word_count` of cleaned standarise text vector without stopwords (`qt_clean_stop`) shows the following frequency:
+On average a question consist of **12 words, around 70 character**. The amount of characters per word (word density) is around 5. However, its ver easy to see that there are extremes. On the lower bound, we have questions that have 1 word, or 1 character or in the upper bound questions of 134 words or a word density of 43 characters per word, which is extremely rare. They are non-sense question, for example:
 
-![Word Count of cleaned and standarise text vector without stopwords](Images/word_level_document_count.PNG)
+![Outlier question example](Images/Outlier_example.png)
 
-There are **66 documents** with zero words and **5723** questions with 1 non-stopword word. These documents show barely any relevant content, thus they will be remove from training set.
+Upper bound extremes are easier to see in a histogram:
 
-![Word length histogram](Images/word_level_document_length.PNG)
+![Histogram of character counts](Images/histogram_char.png)
 
-On the other hand, the histogram also shows that there are documents with more that **14 words (95% percentile)**, these are outliers and will be remove from training. Applying these filter reduces our data set by **10% (952400 rows)**.
+The histogram is righ skewed showing that there are big outliers in terms of document lenght. Above 145 characters, documents are considered outliers of this data. Lets look at the same statistic by target:
 
-![Word length histogram](Images/boxplot_word_level_length.PNG)
+![Histogram of character counts](Images/target_summary_word.png)
 
-When taking a closer look at this variable separated by target, it seems that insincere questions tend to be more elaborate than sincere. On average there are **9 words** per insincere questions instead of **6 words** per sincere question. This phenomena, is also observe when analyzing `character_count`, but `word_density` is practically the same between both classes. 
+It seems that insincere questions tend to be more **elaborate than sincere**. On average there are **17 words** per insincere questions instead of **13 words** per sincere question. Now lets see if there are different distribution of the target in the outlier questions:
+
+![Histogram of character counts](Images/outliers.png)
+
+After testing multiple cut-off point for outliers, the `word_count` < 3, `char_count`> 200, and `word_density`>10 maximizes the insincere class. This criteria will be use to create an outlier feature and help the model with these types of questions. This will specially useful when looking into these documents after processing, its most likely that many will end up in zero words because of stopwords removal. 
 
 ## Algorithms and Techniques
 
@@ -120,14 +97,101 @@ The main algorithms are separated into two main groups:
     - **Bag of Words Model**: all text feature extraction will be done using this model. is represented as the bag (multiset) of its words, disregarding grammar and even word order but keeping multiplicity. However, although is a very simplistic representation, it has shown to be very usefull in a wide variety of natural language processing tasks. Python has two powerful NLP modules that implement this model, the `NLTK` and `gensim` modules. Both are going to be use for feature extraction. 
     - **TF-IDF statistic**: TF-IDF score represents the relative importance of a term in the document and the entire corpus. TF-IDF score is composed by two terms: the first computes the normalized Term Frequency (TF), the second term is the Inverse Document Frequency (IDF), computed as the logarithm of the number of the documents in the corpus divided by the number of documents where the specific term appears [12]. This statistic normalization will be apply to all the text feature analysis. 
 
-### Classification algorithms
+### Classification algorithms and techniques
     
 This is a binary classification task. Hence, the models that will be tested with pros and cons are:
 
     - **Linear Models**: The main algorithm will be the logistic classifier implemented as `LogisticRegression()` in sci-kit learn. this algorithm is usually the *go-to* benchmark. Its usually very fast and scales excellent with data. If the data preprocessing is adequate, the performance is usual very decent. However, since its linear, it fails to grasp non-linearities in the data and many times underperforming in complex datasets. Also it suffers from multicollinearity. 
     - **Naive Bayes**: Is a family of simple "probabilistic classifiers" based on applying Bayes' theorem with strong (naive) independence assumptions between the features. Naive Bayes classifiers are highly scalable, requiring a number of parameters linear in the number of variables (features/predictors) in a learning problem. Nevertheless, as with linear models, naive bayes suffers to grasp non-linearities in the data. Despite their naive design and apparently oversimplified assumptions, naive Bayes classifiers have worked quite well in many complex real-world situations, particularly in NLP tasks. For this project I will implement the `ComplementNB()`, this variant was designed to correct the “severe assumptions” made by the standard Multinomial Naive Bayes classifier. It is particularly suited for imbalanced data sets.
-    - **ExtraTrees**: In extremely randomized trees (`ExtraTreesClassifier()`), randomness goes one step further in the way splits are computed in comparison to standard random forest classifier. As in random forests, a random subset of candidate features is used, but instead of looking for the most discriminative thresholds, thresholds are drawn at random for each candidate feature and the best of these randomly-generated thresholds is picked as the splitting rule. This usually allows to reduce the variance of the model a bit more, at the expense of a slightly greater increase in bias. 
-    - **Adaboost**: Is one of the most popular and one of the first boosting algorithms. Its very easy to implement when using simple weak learners (i.e decision tree), its has a build in feature selection mechanism that results in a relatively simple classifier, and generalize well because of the use of multiple weak learners.  Its main drawback is that, because it tries to fit all data points, it is sensible to outliers and noisy data. In our dataset, I have a large data set with over a hundred text features so its likely that any model we choose is prune to overfit. Adaboost adapts to data learning from its mistakes and, as describe before, is generally tolerant to overfitting. Thus is a good candidate for the task. Sci-kit learns implements this classifier as `AdaBoostClassifier()`.
+    - **LightGBM**: Is one of the most recent and most powerful gradient boosting machines. Microsoft developed this algorithm in 2017 and has rapidly found
+    its way to top kaggle competitions. Gradient boosting in general suffers from eficiency and scalabity when the feature dimension is high and data size is large. LightGBM is able to train significantly faster, with low memory usage, and higher accuracy [14]. This classifier is perfect for our task due to the vast amount of text features that will be generated during the feature extraction phase. As with other gradient boosting algorithms LightGBM adapts to data learning from its mistakes and is generally tolerant to overfitting. Although is not native to Sci-kit learn, the authors have made it compatible. The classifiers is name:  `LGBMClassifier()`.
+    - ** Ensemble**: I will also test an ensemble scheme. The goal of ensemble methods is to combine the predictions of several base estimators built with a given learning algorithm in order to improve generalizability / robustness over a single estimator. The best performance is achieved with diverse base estimators, so as to have different views of the same data sets. For our task I implement a `VotingClassifier()` form sci-kit learn to take into account the prediction of the three first learners describe above. 
+    
+Since our evaluation metric will be F1-score, our prediction must be discrete, 0 or 1. It becomes necessary to search an adequate **cut-off probability threshold** to decide to which of the classes the prediction belongs and to maximize F1-Score. 
+
+## Benchmark
+
+I will construct two benchmark model:
+
+* Naive model: This benchmark is my naive reference, it has no intelligence behind it. I will predict for all test cases the predominant label. All my expected results must be always above this score. As we saw in the exploratory section above, the mayority class is 0 (sincere question), thus if we predict that all the questions are sincere we result in a **F1-Score of 0.06**. This is my lower bound limit, if I have a result very similar or even lower it means that something is wrong with my approach.
+* Basic linear model: This second benchmark is my simple yet intelligent model, which I will try to beat with more complex models models. This logistic classifier will be trained on the crude words of the questions, without preprocessing. This will allow me to evaluate also the impact of my preprocessing step. 
+
+![Benchmarck LogisticRegression](Images/basic_learner_performance.png)
+
+I used high `C`parameter in `LogisticRegression` because natively this algorithm implements regularization. Regularization is a method that constrains or shrinks the coefficient estimates towards zero. In other words, this technique discourages learning a more complex or flexible model, so as to avoid the risk of overfitting. A high `C` parameter discourages regularization. 
+
+The CV score for train and test are significantly different from each other, which implies strong overfitting. This is more evident when we observe the learning curve:
+
+![Learning curve of LogisticRegression benchmarck](Images/Learning_basic_curve.png)
+
+There is also a leaderboard that orders each of the competition participants by their public test set performance [15]. This will also be consulted for comparison.
+
+# III. Methodology
+
+In the figure below I detail the strategy that I used to tackle this classification problem. The idea behind the strategy is to feed the last prediction with a multitude of information. On one hand, you have the text features obtain through the bag of words model. This generates a vast document-term matrix, which can be directly use for classification. Nevertheless, its extremely sparse and models have a hard time finding patterns. After applying TFIDF statistic, there is a need to reduce the dimensionality of this matrix for performance and time efficiency. Two ways of achieving this, and at the same time improving the data, is by feature selection, and by using a classifier's prediction as a feature for another model. This is very similar to stacking. The idea behind it is to provide the next model with an already process view of the data. On the meta feature side, I will extract document and sentiment level features as describe before. I hope that with this strategy the final model will be able to grasp more patterns when combining the process text features with the meta features of the questions. 
+
+![Classification Strategy](Images/strategy.png)
+
+## Data Preprocessing and Implementation
+
+The data was intensively processed in our task. I divided this phase into three parts:
+
+1. **Text cleaning process**: The main objective of this part is to apply a series of transformations to the text data know as text preprocessing techniques. These techniques have been shown to improve, standarise and facilitate modelling. The techniques are de following:
+
+    - Lower casing: Standarise text data. Python, for example, finds that `Hello` and `hello` are to different strings. 
+    - Punctuation removal: Standarise text data. Punctuation marks is a human readible code that helps us give rhtyms and intonation to our reading. For our task and strategy, most of it is noise. 
+    - Special character removal: Standarise text data. Mainly accents and non latin characters. 
+    - Lemmatization: Standarise text data. A word may be express in multiple tense depending on the context. So lemmatization is the process of grouping together the inflected forms of a word so they can be analysed as a single item. 
+    - Stopwords removal. Noise reduction. Many words serve as connectors in a sentence. They are the most common and frequent words in any language, thus they are usually not informative and are filtered out the analysis. 
+
+Most of them are standard transformations and have become canonical in most text classificaction tasks. This proyect implemented a function called `clean_text` that applies all the transformations above and generated two columns: `qt_clean` a clean standarise text vector with stopwords and `qt_clean_stop` a clean standarise text vector without stopwords. This custom made function is strongly supported by the `NLTK`package. 
+
+2. **Feature Extraction**: This is the most intensive part of this project. The main objective is to extract all the posible and informative features from the text for later modelling. A poor feature pool yields a poor classification model, thus my strategy will be:
+
+    - Meta document features: These are all features related to the document statistics. They by itself are not strong predictors but in combination they can help the model gain more insight of the text. These are number of characters, number of words, word density, number of stopwords, number of punctuation marks, number of upper case words, number of nouns, verb, adjectives, pronouns, and adverbs. This last 5 features where implemented in 5 new function, which is supported on the `TextBlob`package. Each question was brokendown into words and each word was tag with a part-of-speach recognition algorithm. These were the most time consuming functions of the project. Therefore, I parallelized this task with the `concurrent.future` module [16]. 
+    
+    - Sentiment Features: Words in all language have an inherent sentiment behind it. Most of the time it depends on the context of what it is said. However, words like `Happiness` almost all of the time is positive. Many libraries exist today that are able to score a group of words and approximate a sentiment. So I made use of the powerful `TextBlob` package to extract polarity, subjectivity and positivity of the questions. The positivity was obtained by a NaiveBayes Classifier from this package that was previously traind on movie reviews. 
+    
+    - Text features: I will decompose each text into a document-term matrix, describes the frequency of terms that occur in a collection of documents. The matrix consist of (m x n) dimensions beign **m** the number of documents or questions and **n** the terms which are present in the documents. Since each documents consist of a small portion of the whole vocabulary of the set, most of the matrix is extremely sparse and noisy. This is even worse when considering not only words, but bigrams or trigrams of words, they aggregate information but also significantly increase the matrix dimension. To reduce noise, I normalized each term using Term Frequency (TF) Inverse Document Frequency (IDF) statistic which generally improves modelling performance as mention above. Moreover, I filtered-out high sparse terms and performed feature selection using chi-squared statistic. Several functions where created to achieve this task. I implemented small pipelines that allow to easily reproduce text vectorization:
+    
+![Basic Pipeline for vectorization](Images/small_pipeline.png)
+
+    - Predictive Text features: I selected the model that performed best with only the text features. This prediction became a feature that was used to stack with the metafeatures (meta document features + Sentiment Features). More details of its implementation in the next section.
+
+3. **Modelling**. To extract the most out of the features I emsembled different models on different set of features. The prediction of the text features was pooled to a master classifier that produce the final classification task. As describe in algorithm section above, I use a mixture of the following classifiers:
+    + Logistic Regression (base learner)
+    + Naive Bayes
+    + LightGBM (very similar to gradient boosting but faster)
+    + Ensemble (from the 3 above) 
+    
+To be able to achieve reproducible results I first splitted the data in training, testing, and validation set. The testing set was never used until the end. I design 3 functions that help me achieve this task: `cv_evaluation`, which worked closely with the simple pipeline function. Internally it vectorize the text, and performe a 5-fold CV with the text features. This help me assess very rapidly if my classifier was overfitting or not. 
+
+![cv_evaluation function](Images/cv_evaluation.png)
+
+When evaluating multiple models I design the `testing_models` function. It allowed me to pass a dictionary of predefined classifiers, and internally the function looped through each model, fit_transformed training set and validation set, calculated the optimal threshold value by calling internally the `threshold_search` function. Finally, the best performing F1-score was calculated for training and validation set. it return, these results as well as the fitted model for further use. 
+
+## Refinements
+
+### Text Feature Extraction
+
+I tested many types of preprocessing techniques at the begining. Although most of the time it did not improve CV performance it did reduce significantly overfitting. For example, the logistic benchmark showed a mean train score of 0.71 and test CV of 0.47, which implies overfitting. The processing step implemented in this work reduced the train score to 0.66 and barely reducing the CV test to 0.46. This is not esencially bad, it means that the model is less prune to learn from the noise. I did not achieve better results afterwards, thus I decided to keep this processing step. 
+
+I studied the ngrams feature in the production of the DTM. Although this increase the terms from ~150.000 unigrams to ~4.3MM combination of unigrams, bigrams and trigrams, It generally improved my CV score, it the CV test from 0.46 to 0.49 on average. I decided to keep the ngrams feature up to trigrams. This nevertheless, obligated me to performe a dimensionality reduction step. All of this analysis you can find it in the `Quora_project_sandbox.py`. 
+
+### Topic Modelling
+
+I devoted a lotof time in topic modelling with LSA. I implemented several functions to optimize the process. I also continously refine the step with collocations (concept words) and coherence of topic analysis. However, the results where not reproducible, and in the timeframe that I manage I wasn't able to correctly implement and scale this feature. Particularly, I wasn't able to predict new topics on new documents. The efford necessary to solve this issue would have consume me priceless time in modelling. Consequently, I decided to remove this processing step and features. You can find part of its implementation on the `LSA_topic_modelling.py`. 
+
+### Modelling
+
+The final selection of classifiers was a balance of model knowlegde and time efficiency. I am usually inclined to use tree-based methods, however they did't performed well in my first tries. They usually got performance lower than 0.4, which was much lower than the linear baseline. I ended selecting naivebayes, because of its simplicity and speed, and lightGBM because of its speed and predictive power. Nevertheless, its greatness comes from the long list of adjustable parameters its has. I had previously work with this algorithm so I knew the range of some of its parameters. For example I never test more than `max_depth` > 6 because I had had terrible overfitting problems in the past. I did not perform any grid search or any type of systematic tuning, mainly because of time constrains. But I did experiment with some of the parameters. For example, I changed the `n_estimators` from 1000 to 500 when modelling from text tometa features. This was because, when facing an enormous amount of variables (text features), it needed a greater number of boosted trees to capture patterns. It improved both my training and CV scores from ~0.5 to 0.58-0.6 in text feature classification. 
+
+# IV Results
+
+## Model Evaluation and Validation
+
+The final model achieved 
+
 
 ## References
 
@@ -156,3 +220,10 @@ This is a binary classification task. Hence, the models that will be tested with
 [12] https://www.analyticsvidhya.com/blog/2018/04/a-comprehensive-guide-to-understand-and-implement-text-classification-in-python/. Comprehensive guide to implement text classification in python. 
 
 [13] https://scikit-learn.org/stable/modules/ensemble.html#ensemble. Ensemble methods.
+
+[14] https://lightgbm.readthedocs.io/en/latest/. LightGBM’s documentation.
+
+[15] https://www.kaggle.com/c/quora-insincere-questions-classification/leaderboard. Leaderboard. 
+
+[16] http://danshiebler.com/2016-09-14-parallel-progress-bar/. Parallel progress bar. 
+

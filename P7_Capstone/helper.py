@@ -18,6 +18,7 @@ from gensim.models.coherencemodel import CoherenceModel
 from textblob import TextBlob, Blobber
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from IPython.display import display_html
+from sklearn import metrics
 import string as st
 import pandas as pd
 import numpy as np
@@ -532,20 +533,23 @@ def parallel_process(array, function, n_jobs=6, use_kwargs=False, front_num=3):
     return front + out
 
 
-def mydisplay(dfs, names=[]):
-    html_str = ''
-    if names:
-        html_str += ('<tr>' + 
-                     ''.join(f'<td style="text-align:center">{name}</td>' for name in names) + 
-                     '</tr>')
-    html_str += ('<tr>' + 
-                 ''.join(f'<td style="vertical-align:top"> {df.to_html(index=False)}</td>' 
-                         for df in dfs) + 
-                 '</tr>')
-    html_str = f'<table>{html_str}</table>'
-    html_str = html_str.replace('table','table style="display:inline"')
-    display_html(html_str, raw=True)
+def threshold_search(y_true, y_proba):
+    'https://www.kaggle.com/ryanzhang/tfidf-naivebayes-logreg-baseline'
+    best_threshold = 0
+    best_score = 0
+    for threshold in [i * 0.01 for i in range(100)]:
+        score = metrics.f1_score(y_true=y_true, y_pred=y_proba > threshold)
+        if score > best_score:
+            best_threshold = threshold
+            best_score = score
+    search_result = {'threshold': best_threshold, 'f1': best_score}
+    return search_result
 
 
-
+    
+    
+    
+    
+    
+    
 

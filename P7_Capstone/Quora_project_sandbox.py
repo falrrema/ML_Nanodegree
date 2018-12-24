@@ -15,7 +15,7 @@ http://danshiebler.com/2016-09-14-parallel-progress-bar/
 """
 
 # Loading libraries
-from sklearn import metrics, naive_bayes
+from sklearn import metrics, naive_bayes, model_selection, linear_model
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import VotingClassifier
@@ -388,7 +388,7 @@ models['ensemble'] = VotingClassifier(estimators = [('logreg', log),
       ('nb', nb), ('lgb', lgb)], voting='soft', n_jobs = 7)
 
 # Defining testing function
-def testing_models(train_x, train_y, valid_x, valid_y, models):
+def testing_models(train_x, train_y, valid_x, valid_y, models, test_x = None, test_y = None):
     
     mod_results = {}
     
@@ -401,18 +401,32 @@ def testing_models(train_x, train_y, valid_x, valid_y, models):
         predictions_train = learner.predict_proba(train_x)
         predictions_valid = learner.predict_proba(valid_x)
         
-        cut_off = h.threshold_search(train_y, predictions_train[:,1])
+        cut_off = threshold_search(train_y, predictions_train[:,1])
         pred_val_threshol = predictions_valid[:,1] > cut_off['threshold']
         
         results['train_score'] = cut_off['f1']
         results['val_score'] = metrics.f1_score(valid_y, pred_val_threshol)
         results['threshold'] = cut_off['threshold']
         results['fitted_model'] = learner
+        
+        if test_x is not 0 and test_y is not 0:
+            print("Test data was passed, refitting model...")
+            learner = models[model]
+            bind_train = train_x.append(valid_x)
+            bind_y = train_y.append(valid_y)
+            learner.fit(bind_train, train_y)
+            
+            predictions_train = learner.predict_proba(bind_train)
+            predictions_test = learner.predict_proba(test_x)
 
+            cut_off = threshold_search(bind_y, predictions_train[:,1])
+            pred_test_threshol = predictions_test[:,1] > cut_off['threshold']
+            results['test_score'] = metrics.f1_score(test_y, pred_test_threshol)
+            
         print(results)
         mod_results[model] = results   
     return(mod_results)
-  
+
 # Finding best text feature model
 text_results = testing_models(train_vect, train_y, valid_vect, valid_y, models)
 
@@ -461,10 +475,10 @@ pred_val = lrn.predict_proba(valid_vect)
 val_feat_x['lgb_text_pred'] = (pred_val[:,1] > thr).astype('int')
 
 # test
-#test_feat_x = pd.concat([test_x.reset_index(drop=True), 
-#                  test_text_feat.reset_index(drop=True)], axis=1)
+test_feat_x = pd.concat([test_x.reset_index(drop=True), 
+                  test_text_feat.reset_index(drop=True)], axis=1)
 
-test_feat_x = test_x
+#test_feat_x = test_x
 lrn = text_results['lightgbm']['fitted_model']
 thr = text_results['lightgbm']['threshold']
 pred_test = lrn.predict_proba(test_vect)

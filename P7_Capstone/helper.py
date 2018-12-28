@@ -19,6 +19,7 @@ from textblob import TextBlob, Blobber
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from IPython.display import display_html
 from sklearn import metrics
+from sklearn.metrics import roc_curve, precision_recall_curve
 import string as st
 import pandas as pd
 import numpy as np
@@ -533,19 +534,31 @@ def parallel_process(array, function, n_jobs=6, use_kwargs=False, front_num=3):
     return front + out
 
 
-def threshold_search(y_true, y_proba):
-    'https://www.kaggle.com/ryanzhang/tfidf-naivebayes-logreg-baseline'
-    best_threshold = 0
-    best_score = 0
-    for threshold in [i * 0.01 for i in range(100)]:
-        score = metrics.f1_score(y_true=y_true, y_pred=y_proba > threshold)
-        if score > best_score:
-            best_threshold = threshold
-            best_score = score
-    search_result = {'threshold': best_threshold, 'f1': best_score}
-    return search_result
+#def threshold_search(y_true, y_proba):
+#    'https://www.kaggle.com/ryanzhang/tfidf-naivebayes-logreg-baseline'
+#    best_threshold = 0
+#    best_score = 0
+#    for threshold in [i * 0.01 for i in range(100)]:
+#        score = metrics.f1_score(y_true=y_true, y_pred=y_proba > threshold)
+#        if score > best_score:
+#            best_threshold = threshold
+#            best_score = score
+#    search_result = {'threshold': best_threshold, 'f1': best_score}
+#    return search_result
 
-
+def threshold_search(y_true, y_proba, plot=False):
+    'https://www.kaggle.com/c/quora-insincere-questions-classification/discussion/75735'
+    precision, recall, thresholds = precision_recall_curve(y_true, y_proba)
+    thresholds = np.append(thresholds, 1.001) 
+    F = 2 / (1/precision + 1/recall)
+    best_score = np.max(F)
+    best_th = thresholds[np.argmax(F)]
+    if plot:
+        plt.plot(thresholds, F, '-b')
+        plt.plot([best_th], [best_score], '*r')
+        plt.show()
+    search_result = {'threshold': best_th , 'f1': best_score}
+    return search_result 
     
     
     

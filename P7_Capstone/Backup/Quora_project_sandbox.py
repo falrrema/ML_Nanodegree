@@ -19,10 +19,8 @@ from sklearn import metrics, naive_bayes, model_selection, linear_model
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import VotingClassifier
-from sklearn.svm import SVC
 from sklearn.feature_extraction.text import TfidfTransformer, CountVectorizer, TfidfVectorizer
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer
 from sklearn.dummy import DummyClassifier
 from sklearn.feature_selection import chi2, mutual_info_classif
 from sklearn.preprocessing import MinMaxScaler

@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Dec 28 09:18:27 2018
+
+Project: Quora Insincere Questions Classification Project
+
+First submission Kernel. The result of udacity capstone.
+
+@author: Fabs
+"""
+
+# 1. Loading libraries helper functions and data ---------------------------------
+import pandas as pd
+import pickle
+import spacy
+import string as st
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV
+from sklearn import metrics, naive_bayes, model_selection, linear_model
+from nltk.corpus import stopwords
+from textblob import TextBlob, Blobber, Word
+from textblob.sentiments import NaiveBayesAnalyzer
+from collections import Counter
+
+# Loading helper functions
+def clean_text(text, lowering = True, remove_punct = True,
+               lemmatization = True, special_char = True, stop_words = None):
+    
+    # Word tokenization
+    words = text.split()
+
+    # Lowercasing
+    if (lowering):
+        words = [word.lower() for word in words]
+        
+    # Special Character removal
+    if (special_char):
+        words = [re.sub(r'[^\x00-\x7F]+','', word) for word in words]
+
+    # Punctuation marks removal
+    if (remove_punct):
+        translator = str.maketrans('', '', st.punctuation)
+        words = [word.translate(translator) for word in words]
+        words = filter(None, words)
+        words = [word for word in words]
+    
+    # Stopwords removal
+    if (stop_words is not None):
+        words = [word for word in words if word not in stop_words] 
+    
+    # Lemmatization
+    if (lemmatization): 
+        words = [Word(word).lemmatize(pos='v') for word in words]  
+    
+    # Words to sentence
+    sentence = " ".join(words)
+    return sentence
+
+def basic_features(df):
+    stop_words = [clean_text(stop) for stop in stopwords.words('english')]
+    df['char_count'] = df['qt_clean'].apply(len) # char clean count
+    df['word_count'] = df['qt_clean'].apply(lambda x: len(x.split())) # word clean count
+    df['word_density'] = df.char_count / (train_set.word_count+1) # word density count
+    df['n_stopwords'] = df['qt_clean'].apply(lambda x: len([x for x in x.split() if x in stop_words]))
+    df['n_numbers'] = df['qt_clean'].apply(lambda x: len([x for x in x.split() if x.isdigit()]))
+    df['n_upper'] = df['question_text'].apply(lambda x: len([x for x in x.split() if x.isupper()]))
+    df['upper_density'] = df.n_upper / (train_set.word_count+1) # upper case word density count
+    df['punct_count'] = df['question_text'].apply(lambda x: len("".join(_ for _ in x if _ in st.punctuation))) 
+    return(df)
+
+def sent_features(df, linguistic_feat, sentimenter):
+    df['polarity'] = [sent.sentiment[0] for sent in get_ling_feat]
+    df['subjectivity'] = [sent.sentiment[1] for sent in linguistic_feat]
+    
+    sentiments = [sentimenter(text) for text in train_set['qt_clean']]
+    df['positivity'] = [sent.sentiment[1] for sent in sentiments]
+    return(df)
+
+def count_tag(text):
+    counts = Counter(token[1] for token in text.tags)
+    return counts
+    
+def check_pos_tag(tags, flag):
+    pos_family = {
+    'noun' : ['NN','NNS','NNP','NNPS'],
+    'pron' : ['PRP','PRP$','WP','WP$'],
+    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
+    'adj' :  ['JJ','JJR','JJS'],
+    'adv' : ['RB','RBR','RBS','WRB']
+    } 
+    get_tags = [tag for tag in tags if tag in pos_family[flag]]
+    get_sums = sum([tags[tag] for tag in get_tags])
+    return get_sums
+
+def postag_features(df, linguistic_feat):
+    get_pos_tag = [count_tag(row) for row in tqdm(linguistic_feat)]
+    df['noun_count'] = [check_pos_tag(tag, 'noun') for tag in get_pos_tag]
+    df['verb_count'] = [check_pos_tag(tag, 'verb') for tag in get_pos_tag]
+    df['adj_count'] = [check_pos_tag(tag, 'adj') for tag in get_pos_tag]
+    df['adv_count'] = [check_pos_tag(tag, 'adv') for tag in get_pos_tag]
+    df['pron_count'] = [check_pos_tag(tag, 'pron') for tag in get_pos_tag]
+    return(df)
+
+# Loading Data
+train_set = pd.read_csv('../input/train.csv')
+test_set = pd.read_csv('../input/test.csv')
+
+# 2. Text Cleaning ------------------------------------------------------------
+# Stopword removal did not show an improvement
+train_set['qt_clean'] = train_set['question_text'].apply(lambda t: clean_text(t))
+test_set['qt_clean'] = test_set['question_text'].apply(lambda t: clean_text(t))
+
+# 3. Document Meta features ---------------------------------------------------
+# These features may aid text feature modelling  
+# Basic features (~1min)
+train_set = basic_features(train_set)
+test_set = basic_features(test_set)
+
+# Sentiment features (~20 min)
+get_ling_feat = train_set['qt_clean'].apply(lambda x: TextBlob(x))
+sentimenter = Blobber(analyzer=NaiveBayesAnalyzer())
+train_set = sent_features(train_set, get_ling_feat, sentimenter)
+get_ling_feat = test_set['qt_clean'].apply(lambda x: TextBlob(x))
+test_set = sent_features(test_set, get_ling_feat, sentimenter)
+
+# Linguistic Features (~30 min)
+train_set = postag_features(train_set, get_ling_feat)
+test_set = postag_features(test_set, get_ling_feat)

@@ -13,6 +13,7 @@ Testing and validating preprocessing steps
 
 # Loading libraries helper functions and data ---------------------------------
 import pandas as pd
+import pickle
 from tqdm import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
@@ -20,6 +21,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
 from sklearn import metrics, naive_bayes, model_selection, linear_model
 from nltk.corpus import stopwords
+
 
 # Loading helper functions
 import helper as h
@@ -61,7 +63,33 @@ grid_search = GridSearchCV(estimator=pipe_log, param_grid=parameters, cv=3, n_jo
                            return_train_score=True)
 
 grid_search.fit(train_set['qt_clean'].astype('U'), train_set['target'])
-       
+grid_search.transform(train_set['qt_clean'].astype('U'))
+
+# Saving Gridsearch 
+with open('Data/GridSearch_Preprocess.pkl', 'wb') as output:
+    pickle.dump(grid_search, output, pickle.HIGHEST_PROTOCOL)
+
+
+df_results = pd.DataFrame(grid_search.cv_results_)
+df_results.to_csv('Data/Results_GS_preprocess.csv')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

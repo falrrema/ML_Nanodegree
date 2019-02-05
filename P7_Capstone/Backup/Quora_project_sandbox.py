@@ -152,7 +152,7 @@ col = ['is_outlier', 'char_count', 'word_count', 'word_density', 'n_stopwords',
        'noun_count', 'verb_count', 'adj_count', 'adv_count', 'pron_count']
 
 # ¿Are they informative of the target? (information gain analysis)
-ig_score = mutual_info_classif(train_set[col], train_set.target)
+ig_score = mutual_info_classif(train_set.loc[:, 'person':'card'], train_set.target)
 ig_score_df = pd.DataFrame({'metafeatures':col, 
                        'inf_gain':ig_score})
 ig_score_df = ig_score_df.sort_values('inf_gain', ascending = False)

@@ -20,6 +20,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from IPython.display import display_html
 from sklearn import metrics
 from sklearn.metrics import roc_curve, precision_recall_curve
+from collections import Counter
 import string as st
 import pandas as pd
 import numpy as np
@@ -27,9 +28,10 @@ import re
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
-
+import spacy
 
 wnl = WordNetLemmatizer()
+nlp = spacy.load('en')
 
 def plot_wordcloud(text, mask=None, max_words=400, max_font_size=120, 
                    figure_size=(24.0,16.0), title = None, title_size=40, 
@@ -363,120 +365,6 @@ def get_topics(model, dtm):
     topic = 'T' + str(topics[0][0])
     return(topic)
     
-# function to check and get the part of speech tag count of a words in a given sentence
-def check_pos_tag(x, flag):
-    pos_family = {
-    'noun' : ['NN','NNS','NNP','NNPS'],
-    'pron' : ['PRP','PRP$','WP','WP$'],
-    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
-    'adj' :  ['JJ','JJR','JJS'],
-    'adv' : ['RB','RBR','RBS','WRB']
-    }
-    
-    cnt = 0
-    wiki = TextBlob(x)
-    for tup in wiki.tags:
-        ppo = list(tup)[1]
-        if ppo in pos_family[flag]:
-            cnt += 1
-
-    return cnt
-
-def check_nouns(x): 
-    flag = 'noun'
-    pos_family = {
-    'noun' : ['NN','NNS','NNP','NNPS'],
-    'pron' : ['PRP','PRP$','WP','WP$'],
-    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
-    'adj' :  ['JJ','JJR','JJS'],
-    'adv' : ['RB','RBR','RBS','WRB']
-    }
-    
-    cnt = 0
-    wiki = TextBlob(x)
-    for tup in wiki.tags:
-        ppo = list(tup)[1]
-        if ppo in pos_family[flag]:
-            cnt += 1
-
-    return cnt
-
-def check_pron(x): 
-    flag = 'pron'
-    pos_family = {
-    'noun' : ['NN','NNS','NNP','NNPS'],
-    'pron' : ['PRP','PRP$','WP','WP$'],
-    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
-    'adj' :  ['JJ','JJR','JJS'],
-    'adv' : ['RB','RBR','RBS','WRB']
-    }
-    
-    cnt = 0
-    wiki = TextBlob(x)
-    for tup in wiki.tags:
-        ppo = list(tup)[1]
-        if ppo in pos_family[flag]:
-            cnt += 1
-
-    return cnt
-
-def check_verbs(x): 
-    flag = 'verb'
-    pos_family = {
-    'noun' : ['NN','NNS','NNP','NNPS'],
-    'pron' : ['PRP','PRP$','WP','WP$'],
-    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
-    'adj' :  ['JJ','JJR','JJS'],
-    'adv' : ['RB','RBR','RBS','WRB']
-    }
-    
-    cnt = 0
-    wiki = TextBlob(x)
-    for tup in wiki.tags:
-        ppo = list(tup)[1]
-        if ppo in pos_family[flag]:
-            cnt += 1
-
-    return cnt
-
-def check_adj(x): 
-    flag = 'adj'
-    pos_family = {
-    'noun' : ['NN','NNS','NNP','NNPS'],
-    'pron' : ['PRP','PRP$','WP','WP$'],
-    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
-    'adj' :  ['JJ','JJR','JJS'],
-    'adv' : ['RB','RBR','RBS','WRB']
-    }
-    
-    cnt = 0
-    wiki = TextBlob(x)
-    for tup in wiki.tags:
-        ppo = list(tup)[1]
-        if ppo in pos_family[flag]:
-            cnt += 1
-
-    return cnt
-
-def check_adv(x): 
-    flag = 'adv'
-    pos_family = {
-    'noun' : ['NN','NNS','NNP','NNPS'],
-    'pron' : ['PRP','PRP$','WP','WP$'],
-    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
-    'adj' :  ['JJ','JJR','JJS'],
-    'adv' : ['RB','RBR','RBS','WRB']
-    }
-    
-    cnt = 0
-    wiki = TextBlob(x)
-    for tup in wiki.tags:
-        ppo = list(tup)[1]
-        if ppo in pos_family[flag]:
-            cnt += 1
-
-    return cnt
-
 def NB_sentimenter(text, classifier, positivity = True):
     sent = classifier(text)
     
@@ -561,8 +449,22 @@ def threshold_search(y_true, y_proba, plot=False):
     return search_result 
     
     
+def count_tag(text):
+    counts = Counter(token[1] for token in text.tags)
+    return counts
     
+# function to check and get the part of speech tag count of a words in a given sentence
+def check_pos_tag(tags, flag):
+    pos_family = {
+    'noun' : ['NN','NNS','NNP','NNPS'],
+    'pron' : ['PRP','PRP$','WP','WP$'],
+    'verb' : ['VB','VBD','VBG','VBN','VBP','VBZ'],
+    'adj' :  ['JJ','JJR','JJS'],
+    'adv' : ['RB','RBR','RBS','WRB']
+    }
     
-    
+    get_tags = [tag for tag in tags if tag in pos_family[flag]]
+    get_sums = sum([tags[tag] for tag in get_tags])
+    return get_sums
     
 
